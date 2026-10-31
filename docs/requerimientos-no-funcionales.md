@@ -18,7 +18,7 @@ Prioridades:
 | 2 | Integridad de la base (claves foráneas, transacciones, modo WAL) | Alta | Hecho (paso 1) |
 | 3 | Bloqueo de la app con contraseña o PIN | Alta | No existe |
 | 4 | Cifrado de la base de datos | Alta | No existe |
-| 5 | Endurecer la seguridad de Tauri (CSP y permisos) | Alta | Parcial |
+| 5 | Endurecer la seguridad de Tauri (CSP y permisos) | Alta | Hecho (paso 2) |
 | 6 | Exportación de datos (portabilidad) | Media | No existe |
 | 7 | Registro de errores (logs) | Media | No existe |
 | 8 | Aviso de actualización y actualizaciones automáticas | Media | No existe |
@@ -84,9 +84,11 @@ Aunque la app tenga contraseña, el archivo `psigestion.db` se puede abrir con c
 
 ### 5. Endurecer la seguridad de Tauri (Alta)
 
-- Definir una CSP en `tauri.conf.json` (hoy es `null`): solo recursos propios de la app, sin scripts externos.
-- Revisar los permisos de `capabilities/default.json` y dejar solo los que se usan.
-- Mantener las dependencias actualizadas (por ejemplo con Dependabot) y revisar avisos de seguridad (`npm audit`, `cargo audit`) en el CI.
+Hecho en el paso 2:
+
+- CSP en `tauri.conf.json`: solo recursos propios de la app, sin scripts, estilos, imágenes ni conexiones externas. Además `freezePrototype` para dificultar la manipulación de objetos de JavaScript.
+- Permisos de `capabilities/default.json` reducidos a lo que se usa: abrir la base, leer, escribir y elegir una carpeta. Se quitaron `core:default` y el permiso de cerrar la base.
+- CI semanal y en cada cambio con `npm audit` y `cargo audit` (flujo *Seguridad de dependencias*), y Dependabot propone actualizaciones una vez por mes.
 
 ### 6. Exportación de datos (Media)
 
@@ -186,7 +188,7 @@ Ya cubierto: la app no necesita internet. Solo hay que preservarlo al sumar func
 ## Orden sugerido
 
 1. ~~Integridad de la base (2) y copias de seguridad (1)~~: hecho.
-2. CSP y permisos (5).
+2. ~~CSP y permisos (5)~~: hecho.
 3. Contraseña (3) y cifrado (4), juntos, porque la clave del cifrado sale de la contraseña.
 4. Logs (7) y exportación (6).
 5. Precisión de montos (10) y papelera (11).

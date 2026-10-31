@@ -1,0 +1,32 @@
+name: Seguridad de dependencias
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Todos los lunes, para enterarse de avisos nuevos aunque no haya cambios.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  auditoria:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Auditoría de paquetes npm
+        run: npm audit --audit-level=high
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Auditoría de paquetes Rust
+        working-directory: src-tauri
+        run: cargo audit
