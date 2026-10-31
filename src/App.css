@@ -889,3 +889,82 @@ button.quitar:hover:not(:disabled) {
 .aviso-menu.error:hover:not(:disabled) {
   background: #fee4e2;
 }
+
+/* ---------- Acceso y seguridad ---------- */
+
+.menu .bloquear {
+  margin-top: auto;
+}
+
+.menu .bloquear + .estado-db {
+  margin-top: 0;
+}
+
+.acceso {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.acceso-tarjeta {
+  width: 100%;
+  max-width: 420px;
+  padding: 28px 32px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+}
+
+.acceso-tarjeta .marca {
+  margin: 0 0 16px;
+}
+
+.acceso-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.acceso-form h2,
+.acceso-form h3 {
+  margin: 0;
+}
+
+.acceso-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.acceso-form label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.clave-recuperacion {
+  display: block;
+  padding: 12px;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+  overflow-wrap: anywhere;
+  background: var(--acento-suave);
+  border-radius: 6px;
+  user-select: all;
+}
+
+button.enlace {
+  border: none;
+  background: none;
+  color: var(--acento);
+  padding: 0;
+}
+
+button.enlace:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}

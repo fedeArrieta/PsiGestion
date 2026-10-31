@@ -10,7 +10,7 @@ import {
   type ArchivoCopia,
 } from "./logica";
 
-const archivo = (nombre: string): ArchivoCopia => ({ nombre, ruta: `C:\\Copias\\${nombre}`, bytes: 1, modificada: 0 });
+const archivo = (nombre: string): ArchivoCopia => ({ nombre, ruta: `C:\\Copias\\${nombre}`, bytes: 1, modificada: 0, cifrada: true });
 
 describe("copias de seguridad", () => {
   it("arma y lee el nombre de una copia", () => {
@@ -40,6 +40,8 @@ describe("copias de seguridad", () => {
     expect(necesitaCopiaAutomatica(null, ahora)).toBe(true);
     expect(necesitaCopiaAutomatica(new Date(2026, 9, 31, 9, 0), ahora)).toBe(false);
     expect(necesitaCopiaAutomatica(new Date(2026, 9, 30, 20, 0), ahora)).toBe(true);
+    // Recién activado el cifrado: la última copia es de antes y no está cifrada.
+    expect(necesitaCopiaAutomatica(new Date(2026, 9, 31, 9, 0), ahora, false)).toBe(true);
   });
 
   it("avisa si pasaron 7 días o más sin copia", () => {

@@ -11,12 +11,15 @@ use serde_json::Value;
 use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
+use crate::base::ARCHIVO_DB;
+
 /// La conexión que abre la interfaz (ver src/db.ts).
 pub const URL_DB: &str = "sqlite:psigestion.db";
-const ARCHIVO_DB: &str = "psigestion.db";
 /// Si existe al iniciar, contiene la ruta de una copia para restaurar antes de abrir la base.
 const ARCHIVO_RESTAURAR: &str = "restaurar-pendiente.txt";
 const PREFIJO_COPIA: &str = "psigestion-";
+/// Copia de seguridad.json que acompaña a las copias.
+const ARCHIVO_LLAVE: &str = "psigestion-llave.json";
 
 /// Resultado de la última restauración, para mostrarlo una vez en la interfaz.
 #[derive(Default)]
@@ -78,6 +81,8 @@ pub struct Copia {
     bytes: u64,
     /// Milisegundos desde 1970.
     modificada: u64,
+    /// false para las copias hechas antes de activar el cifrado.
+    cifrada: bool,
 }
 
 /// Carpeta sugerida para las copias: Documentos\PsiGestion\Copias.
@@ -92,14 +97,20 @@ pub fn carpeta_copias_sugerida<R: Runtime>(app: AppHandle<R>) -> Result<String, 
 }
 
 /// Crea la carpeta de copias si no existe y devuelve la ruta completa para una copia nueva.
+/// También deja ahí una copia de `seguridad.json`: sin ella las copias cifradas no se
+/// pueden abrir en otra computadora. Está protegida por la contraseña y la clave de recuperación.
 #[tauri::command]
-pub fn preparar_copia(carpeta: String, nombre: String) -> Result<String, String> {
+pub fn preparar_copia<R: Runtime>(app: AppHandle<R>, carpeta: String, nombre: String) -> Result<String, String> {
     validar_nombre(&nombre)?;
     let carpeta = PathBuf::from(carpeta);
     fs::create_dir_all(&carpeta).map_err(|e| format!("No se pudo crear la carpeta de copias: {e}"))?;
     let ruta = carpeta.join(&nombre);
     if ruta.exists() {
         return Err("Ya existe una copia con ese nombre.".into());
+    }
+    let seguridad = carpeta_app(&app)?.join(crate::seguridad::ARCHIVO);
+    if seguridad.exists() {
+        fs::copy(&seguridad, carpeta.join(ARCHIVO_LLAVE)).map_err(|e| e.to_string())?;
     }
     Ok(ruta.to_string_lossy().into_owned())
 }
@@ -133,6 +144,7 @@ pub fn listar_copias(carpeta: String) -> Result<Vec<Copia>, String> {
             ruta: entrada.path().to_string_lossy().into_owned(),
             bytes: meta.len(),
             modificada,
+            cifrada: !es_sqlite(&entrada.path()),
         });
     }
     copias.sort_by(|a, b| b.nombre.cmp(&a.nombre));
@@ -157,7 +169,8 @@ fn validar_nombre(nombre: &str) -> Result<(), String> {
     if valido { Ok(()) } else { Err(format!("\"{nombre}\" no es una copia de PsiGestion.")) }
 }
 
-fn es_sqlite(ruta: &Path) -> bool {
+/// true si el archivo es una base SQLite sin cifrar.
+pub fn es_sqlite(ruta: &Path) -> bool {
     let mut cabecera = [0u8; 16];
     fs::File::open(ruta)
         .and_then(|mut f| f.read_exact(&mut cabecera))

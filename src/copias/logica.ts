@@ -8,6 +8,8 @@ export interface ArchivoCopia {
   bytes: number;
   /** Milisegundos desde 1970. */
   modificada: number;
+  /** false para las copias hechas antes de activar el cifrado. */
+  cifrada: boolean;
 }
 
 /** Cada cuánto se hace la copia automática. */
@@ -48,8 +50,9 @@ export function copiasABorrar(copias: ArchivoCopia[], conservar: number): Archiv
   return automaticas.slice(Math.max(1, conservar));
 }
 
-export function necesitaCopiaAutomatica(ultima: Date | null, ahora: Date): boolean {
-  return !ultima || ahora.getTime() - ultima.getTime() >= HORAS_ENTRE_COPIAS * 3600_000;
+/** Hace falta si pasó el plazo o si todavía no hay ninguna copia cifrada (recién activado el cifrado). */
+export function necesitaCopiaAutomatica(ultima: Date | null, ahora: Date, hayCopiaCifrada = true): boolean {
+  return !ultima || !hayCopiaCifrada || ahora.getTime() - ultima.getTime() >= HORAS_ENTRE_COPIAS * 3600_000;
 }
 
 /** Días enteros desde la última copia, o null si nunca se hizo. */

@@ -62,7 +62,8 @@ export async function hacerCopia(tipo: TipoCopia): Promise<string> {
 /** Copia automática si pasaron 24 horas desde la última. Si falla, guarda el motivo para avisar. */
 export async function copiaAutomaticaSiCorresponde(): Promise<void> {
   const config = await leerConfigCopias();
-  if (!necesitaCopiaAutomatica(config.ultima, new Date())) return;
+  const copias = await listarCopias(config.carpeta).catch(() => [] as ArchivoCopia[]);
+  if (!necesitaCopiaAutomatica(config.ultima, new Date(), copias.some((c) => c.cifrada))) return;
   try {
     await hacerCopia("auto");
   } catch (e) {
@@ -82,4 +83,11 @@ export async function resultadoRestauracion(): Promise<{ ok: boolean; detalle: s
   if (!r) return null;
   const ok = r.startsWith("ok:");
   return { ok, detalle: r.slice(r.indexOf(":") + 1) };
+}
+
+/** Borra las copias hechas antes de activar el cifrado, que guardan los datos sin proteger. */
+export async function borrarCopiasSinCifrar(carpeta: string): Promise<number> {
+  const sinCifrar = (await listarCopias(carpeta)).filter((c) => !c.cifrada);
+  for (const c of sinCifrar) await invoke("borrar_copia", { ruta: c.ruta });
+  return sinCifrar.length;
 }

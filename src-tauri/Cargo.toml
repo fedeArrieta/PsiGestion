@@ -23,8 +23,16 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
+# Contraseña: derivación de claves (Argon2id) y cifrado de la clave de datos.
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+rand = "0.8"
+zeroize = "1"
+tokio = { version = "1", features = ["time"] }
 # La misma versión de sqlx que usa tauri-plugin-sql, para correr transacciones sobre su conexión.
-sqlx = { version = "0.8", default-features = false, features = ["sqlite"] }
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "migrate"] }
+# SQLCipher en lugar de SQLite común, para que la base quede cifrada (incluye OpenSSL compilado).
+libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher-vendored-openssl"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
@@ -34,3 +42,6 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

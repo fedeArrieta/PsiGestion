@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { obtenerDb } from "./db";
 import { verificarIntegridad } from "./repositorio";
 import Copias from "./copias/Copias";
@@ -7,16 +7,23 @@ import { copiaAutomaticaSiCorresponde, leerConfigCopias, resultadoRestauracion }
 import Agenda from "./agenda/Agenda";
 import Pacientes from "./pacientes/Pacientes";
 import Finanzas from "./finanzas/Finanzas";
+import Acceso from "./seguridad/Acceso";
+import Seguridad, { leerMinutosBloqueo } from "./seguridad/Seguridad";
+import { bloquear, debeBloquear, estadoAcceso, MINUTOS_BLOQUEO_POR_DEFECTO, type EstadoAcceso } from "./seguridad/servicio";
 import "./App.css";
 
-type Seccion = "agenda" | "pacientes" | "finanzas" | "copias";
+type Seccion = "agenda" | "pacientes" | "finanzas" | "copias" | "seguridad";
 
 const SECCIONES: { id: Seccion; titulo: string }[] = [
   { id: "agenda", titulo: "Agenda" },
   { id: "pacientes", titulo: "Pacientes" },
   { id: "finanzas", titulo: "Finanzas" },
   { id: "copias", titulo: "Copias de seguridad" },
+  { id: "seguridad", titulo: "Seguridad" },
 ];
+
+/** Cada cuánto se revisa si pasó el tiempo de inactividad. */
+const REVISAR_INACTIVIDAD_MS = 15 * 1000;
 
 /** Cada cuánto se revisa, con la app abierta, si toca la copia automática. */
 const REVISAR_COPIA_MS = 60 * 60 * 1000;
@@ -33,8 +40,60 @@ type EstadoDb =
   | { tipo: "ok" }
   | { tipo: "error"; mensaje: string };
 
+/** Controla el acceso: mientras la app está bloqueada no se muestra (ni se carga) ningún dato. */
 function App() {
+  const [estado, setEstado] = useState<EstadoAcceso | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const actualizar = useCallback(() => {
+    estadoAcceso()
+      .then(setEstado)
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  useEffect(actualizar, [actualizar]);
+
+  const alBloquear = useCallback(async () => {
+    await bloquear().catch(() => {});
+    setEstado("bloqueada");
+  }, []);
+
+  if (error) return <p className="error">{error}</p>;
+  if (!estado) return null;
+  if (estado !== "desbloqueada") return <Acceso estado={estado} onListo={actualizar} />;
+  return <Principal onBloquear={alBloquear} />;
+}
+
+/** Bloquea la app después de un rato sin usarla. */
+function useBloqueoPorInactividad(minutos: number, onBloquear: () => void) {
+  const ultimaActividad = useRef(Date.now());
+  useEffect(() => {
+    const registrar = () => {
+      ultimaActividad.current = Date.now();
+    };
+    const eventos = ["mousemove", "mousedown", "keydown", "wheel", "touchstart"] as const;
+    eventos.forEach((e) => window.addEventListener(e, registrar, { passive: true }));
+    const intervalo = window.setInterval(() => {
+      if (debeBloquear(ultimaActividad.current, Date.now(), minutos)) onBloquear();
+    }, REVISAR_INACTIVIDAD_MS);
+    return () => {
+      eventos.forEach((e) => window.removeEventListener(e, registrar));
+      window.clearInterval(intervalo);
+    };
+  }, [minutos, onBloquear]);
+}
+
+function Principal({ onBloquear }: { onBloquear: () => void }) {
   const [seccion, setSeccion] = useState<Seccion>("agenda");
+  const [minutosBloqueo, setMinutosBloqueo] = useState(MINUTOS_BLOQUEO_POR_DEFECTO);
+  useBloqueoPorInactividad(minutosBloqueo, onBloquear);
+
+  useEffect(() => {
+    leerMinutosBloqueo()
+      .then(setMinutosBloqueo)
+      .catch(() => {});
+  }, []);
+
   const [estadoDb, setEstadoDb] = useState<EstadoDb>({ tipo: "cargando" });
   const [avisoIntegridad, setAvisoIntegridad] = useState<Aviso | null>(null);
   const [avisoRestauracion, setAvisoRestauracion] = useState<Aviso | null>(null);
@@ -124,6 +183,9 @@ function App() {
             {a.texto}
           </button>
         ))}
+        <button className="item bloquear" onClick={onBloquear}>
+          Bloquear
+        </button>
         <div className="estado-db">
           {estadoDb.tipo === "cargando" && "Conectando base de datos…"}
           {estadoDb.tipo === "ok" && "Base de datos lista"}
@@ -135,6 +197,7 @@ function App() {
         {seccion === "pacientes" && <Pacientes />}
         {seccion === "finanzas" && <Finanzas />}
         {seccion === "copias" && <Copias onCambio={revisarCopias} />}
+        {seccion === "seguridad" && <Seguridad onMinutos={setMinutosBloqueo} />}
       </main>
     </div>
   );
