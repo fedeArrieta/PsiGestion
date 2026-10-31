@@ -1,0 +1,107 @@
+:root {
+  --fondo: #f5f6f8;
+  --panel: #ffffff;
+  --texto: #1f2933;
+  --texto-suave: #616e7c;
+  --acento: #3b6e8f;
+  --acento-suave: #e3eef5;
+  --borde: #dde2e8;
+
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--texto);
+  background-color: var(--fondo);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #16191d;
+    --panel: #1f2328;
+    --texto: #e4e7eb;
+    --texto-suave: #9aa5b1;
+    --acento: #7fb3d5;
+    --acento-suave: #24323d;
+    --borde: #2f353c;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--fondo);
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+.menu {
+  width: 220px;
+  padding: 20px 12px;
+  background: var(--panel);
+  border-right: 1px solid var(--borde);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.marca {
+  font-size: 1.3rem;
+  margin: 0 8px 16px;
+  color: var(--acento);
+}
+
+.item {
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--acento-suave);
+}
+
+.item.activo {
+  background: var(--acento-suave);
+  color: var(--acento);
+  font-weight: 600;
+}
+
+.estado-db {
+  margin-top: auto;
+  padding: 8px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.contenido {
+  flex: 1;
+  padding: 32px 40px;
+}
+
+.contenido h2 {
+  margin: 0 0 4px;
+}
+
+.descripcion {
+  margin: 0 0 24px;
+  color: var(--texto-suave);
+}
+
+.pendiente {
+  padding: 24px;
+  border: 1px dashed var(--borde);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--texto-suave);
+}
