@@ -13,6 +13,7 @@ import {
 import type { Gasto, ResumenMes } from "../tipos";
 import { leerMonto, montoEditable, pesos } from "../formato";
 import { calcularMetas, mesDe, sumarMeses, textoMes, type Meta } from "./calculo";
+import { textoError } from "../errores";
 
 export default function Finanzas() {
   const [mes, setMes] = useState(() => mesDe(new Date()));
@@ -30,7 +31,7 @@ export default function Finanzas() {
       setObjetivo(o);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(textoError(e, "cargar finanzas"));
     }
   }, [mes]);
 
@@ -43,7 +44,7 @@ export default function Finanzas() {
       await accion();
       await cargar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(textoError(e, "finanzas"));
     }
   }
 

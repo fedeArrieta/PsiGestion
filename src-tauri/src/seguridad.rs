@@ -164,6 +164,7 @@ fn guardar_clave(estado: &EstadoSeguridad, clave: Zeroizing<[u8; 32]>) {
 
 /// Espera tras un intento fallido para que probar contraseñas sea lento.
 async fn demora_por_error() {
+    log::warn!("intento de acceso con una contraseña o clave de recuperación incorrecta");
     tokio::time::sleep(Duration::from_secs(1)).await;
 }
 

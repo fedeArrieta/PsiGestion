@@ -8,8 +8,8 @@ import {
   recuperarAcceso,
   type EstadoAcceso,
 } from "./servicio";
+import { textoError } from "../errores";
 
-const textoError = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Pantalla que se muestra mientras la app no está desbloqueada. */
 export default function Acceso({ estado, onListo }: { estado: EstadoAcceso; onListo: () => void }) {

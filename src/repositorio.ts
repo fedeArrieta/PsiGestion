@@ -316,3 +316,28 @@ export async function verificarIntegridad(db: Db): Promise<string[]> {
   const mensajes = filas.map((f) => Object.values(f)[0]);
   return mensajes.length === 1 && mensajes[0] === "ok" ? [] : mensajes;
 }
+
+// ---------- Exportación ----------
+
+export interface DatosExportacion {
+  pacientes: Paciente[];
+  turnos: TurnoConPaciente[];
+  gastos: Gasto[];
+}
+
+/** Todo lo que se exporta. Con mes (AAAA-MM) se limitan turnos y gastos a ese mes. */
+export async function datosParaExportar(db: Db, mes: string | null): Promise<DatosExportacion> {
+  if (mes !== null && !MES.test(mes)) throw new Error("El mes no es válido.");
+  const [pacientes, turnos, gastos] = await Promise.all([
+    db.select<Paciente[]>("SELECT * FROM pacientes ORDER BY nombre COLLATE NOCASE"),
+    db.select<TurnoConPaciente[]>(
+      `SELECT t.*, p.nombre AS paciente_nombre
+         FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
+        WHERE $1 IS NULL OR substr(t.inicio, 1, 7) = $1
+        ORDER BY t.inicio, t.id`,
+      [mes],
+    ),
+    db.select<Gasto[]>("SELECT * FROM gastos WHERE $1 IS NULL OR mes = $1 ORDER BY mes, id", [mes]),
+  ]);
+  return { pacientes, turnos, gastos };
+}

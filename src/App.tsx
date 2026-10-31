@@ -11,6 +11,7 @@ import Acceso from "./seguridad/Acceso";
 import Seguridad, { leerMinutosBloqueo } from "./seguridad/Seguridad";
 import { bloquear, debeBloquear, estadoAcceso, MINUTOS_BLOQUEO_POR_DEFECTO, type EstadoAcceso } from "./seguridad/servicio";
 import "./App.css";
+import { textoError } from "./errores";
 
 type Seccion = "agenda" | "pacientes" | "finanzas" | "copias" | "seguridad";
 
@@ -48,7 +49,7 @@ function App() {
   const actualizar = useCallback(() => {
     estadoAcceso()
       .then(setEstado)
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(textoError(e, "estado de acceso")));
   }, []);
 
   useEffect(actualizar, [actualizar]);
@@ -116,7 +117,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         setAvisoCopias(null);
       }
     } catch (e) {
-      setAvisoCopias({ tipo: "aviso", texto: `Error en las copias de seguridad: ${String(e)}`, ir: "copias" });
+      setAvisoCopias({ tipo: "aviso", texto: `Error en las copias de seguridad: ${textoError(e, "copia automática")}`, ir: "copias" });
     }
   }, []);
 
@@ -128,7 +129,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         await db.select("SELECT 1");
         setEstadoDb({ tipo: "ok" });
       } catch (e) {
-        setEstadoDb({ tipo: "error", mensaje: String(e) });
+        setEstadoDb({ tipo: "error", mensaje: textoError(e, "abrir base") });
         return;
       }
       try {
@@ -151,7 +152,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
           return;
         }
       } catch (e) {
-        setAvisoIntegridad({ tipo: "error", texto: `No se pudo revisar la base de datos: ${String(e)}` });
+        setAvisoIntegridad({ tipo: "error", texto: `No se pudo revisar la base de datos: ${textoError(e, "chequeo de integridad")}` });
       }
       await revisarCopias();
       intervalo = window.setInterval(revisarCopias, REVISAR_COPIA_MS);

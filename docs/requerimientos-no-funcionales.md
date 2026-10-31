@@ -19,8 +19,8 @@ Prioridades:
 | 3 | Bloqueo de la app con contraseña o PIN | Alta | Hecho (paso 3) |
 | 4 | Cifrado de la base de datos | Alta | Hecho (paso 3) |
 | 5 | Endurecer la seguridad de Tauri (CSP y permisos) | Alta | Hecho (paso 2) |
-| 6 | Exportación de datos (portabilidad) | Media | No existe |
-| 7 | Registro de errores (logs) | Media | No existe |
+| 6 | Exportación de datos (portabilidad) | Media | Hecho (paso 4) |
+| 7 | Registro de errores (logs) | Media | Hecho (paso 4) |
 | 8 | Aviso de actualización y actualizaciones automáticas | Media | No existe |
 | 9 | Firma digital del instalador | Media | No existe |
 | 10 | Precisión de los montos (sin errores de redondeo) | Media | Parcial |
@@ -96,18 +96,19 @@ Hecho en el paso 2:
 
 ### 6. Exportación de datos (Media)
 
-- Exportar pacientes, turnos y gastos a Excel/CSV, por mes o completo.
-- Exportar la ficha de un paciente (datos y historial de sesiones) a PDF, por si el paciente la solicita o hay que entregarla.
-- Sirve también como respaldo legible fuera de la app.
+Hecho en el paso 4:
+
+- En **Copias de seguridad → Exportar a Excel**: un `.xlsx` con hojas de pacientes, turnos y gastos, de todo o de un mes, con montos en formato de pesos y filtros. Se avisa que el archivo no está cifrado.
+- En la ficha del paciente, **Imprimir o guardar PDF**: abre la impresión de Windows con los datos, el saldo y el historial de sesiones; con "Microsoft Print to PDF" se guarda como PDF.
 
 ### 7. Registro de errores (Media)
 
-Hoy los errores solo se muestran en pantalla y se pierden al cerrar.
+Hecho en el paso 4:
 
-- Usar `tauri-plugin-log` para guardar un archivo de log en la carpeta de la app, con rotación (por ejemplo, 5 archivos de 1 MB).
-- No registrar datos de pacientes (nombres, notas): solo el tipo de error y la operación.
-- Botón "Abrir carpeta de logs" para poder enviarlos al pedir soporte.
-- Mensajes de error en pantalla en lenguaje simple, sin texto técnico.
+- `tauri-plugin-log` guarda `psigestion.log` en `%LOCALAPPDATA%\com.psigestion.app\logs`, con hasta 5 archivos de 1 MB.
+- Se registran el inicio, las restauraciones, los errores al abrir la base, los intentos de contraseña incorrecta y cualquier error de la interfaz, con la operación y el mensaje técnico. No se registran valores de los datos (las consultas usan parámetros, que no aparecen en los mensajes).
+- **Seguridad → Abrir carpeta de registros** abre la carpeta en el Explorador.
+- Los errores en pantalla se muestran en lenguaje simple (`src/errores.ts`); los técnicos se reemplazan por un mensaje genérico que remite al registro.
 
 ### 8. Aviso de actualización y actualizaciones automáticas (Media)
 
@@ -194,7 +195,7 @@ Ya cubierto: la app no necesita internet. Solo hay que preservarlo al sumar func
 1. ~~Integridad de la base (2) y copias de seguridad (1)~~: hecho.
 2. ~~CSP y permisos (5)~~: hecho.
 3. ~~Contraseña (3) y cifrado (4)~~: hecho.
-4. Logs (7) y exportación (6).
+4. ~~Logs (7) y exportación (6)~~: hecho.
 5. Precisión de montos (10) y papelera (11).
 6. Versionado (16), aviso de actualización y actualizaciones (8), y firma (9). El aviso y el versionado van juntos, porque el aviso necesita saber qué versión está instalada.
 7. El resto según se necesite.

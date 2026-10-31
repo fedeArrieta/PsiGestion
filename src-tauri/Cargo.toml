@@ -33,6 +33,9 @@ tokio = { version = "1", features = ["time"] }
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "migrate"] }
 # SQLCipher en lugar de SQLite común, para que la base quede cifrada (incluye OpenSSL compilado).
 libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher-vendored-openssl"] }
+tauri-plugin-log = "2"
+log = "0.4"
+rust_xlsxwriter = "0.102.0"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

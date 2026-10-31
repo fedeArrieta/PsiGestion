@@ -96,11 +96,17 @@ pub async fn cifrar_si_hace_falta(ruta: &Path, clave: &[u8; 32]) -> Result<bool,
 
 /// Abre la base con la clave, aplica las migraciones y la deja disponible para la interfaz.
 pub async fn abrir<R: Runtime>(app: &AppHandle<R>, clave: &[u8; 32]) -> Result<(), String> {
+    abrir_base(app, clave).await.inspect_err(|e| log::error!("abrir la base: {e}"))
+}
+
+async fn abrir_base<R: Runtime>(app: &AppHandle<R>, clave: &[u8; 32]) -> Result<(), String> {
     let ruta = ruta_db(app)?;
     if let Some(carpeta) = ruta.parent() {
         fs::create_dir_all(carpeta).map_err(|e| e.to_string())?;
     }
-    cifrar_si_hace_falta(&ruta, clave).await?;
+    if cifrar_si_hace_falta(&ruta, clave).await? {
+        log::info!("se cifró una base que estaba sin cifrar");
+    }
     let pool = SqlitePoolOptions::new()
         .connect_with(opciones(&ruta, clave))
         .await

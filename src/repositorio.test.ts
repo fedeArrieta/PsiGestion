@@ -26,6 +26,7 @@ import {
   marcarPagado,
   saldarPaciente,
   copiarBaseA,
+  datosParaExportar,
   guardarConfiguracion,
   leerConfiguracion,
   verificarIntegridad,
@@ -311,5 +312,26 @@ describe("repositorio", () => {
         rmSync(carpeta, { recursive: true, force: true });
       }
     });
+  });
+
+  it("junta los datos para exportar, completos o de un mes", async () => {
+    const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+    const beto = await crearPaciente(db, { nombre: "Beto", monto_sesion: 200 });
+    await cambiarActivoPaciente(db, beto, false);
+    await crearTurno(db, { paciente_id: ana, inicio: "2026-10-31T09:00", duracion_min: 50 });
+    await crearTurno(db, { paciente_id: ana, inicio: "2026-11-02T09:00", duracion_min: 50 });
+    await crearGasto(db, { mes: "2026-10", descripcion: "Alquiler", monto: 1000 });
+    await crearGasto(db, { mes: "2026-11", descripcion: "Luz", monto: 50 });
+
+    const todo = await datosParaExportar(db, null);
+    expect(todo.pacientes.map((p) => p.nombre)).toEqual(["Ana", "Beto"]);
+    expect(todo.turnos).toHaveLength(2);
+    expect(todo.turnos[0].paciente_nombre).toBe("Ana");
+    expect(todo.gastos).toHaveLength(2);
+
+    const octubre = await datosParaExportar(db, "2026-10");
+    expect(octubre.turnos.map((t) => t.inicio)).toEqual(["2026-10-31T09:00"]);
+    expect(octubre.gastos.map((g) => g.descripcion)).toEqual(["Alquiler"]);
+    await expect(datosParaExportar(db, "octubre")).rejects.toThrow();
   });
 });

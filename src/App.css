@@ -968,3 +968,80 @@ button.enlace:hover:not(:disabled) {
   background: none;
   text-decoration: underline;
 }
+
+/* ---------- Impresión de la ficha ---------- */
+
+.impresion {
+  display: none;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  body > #root {
+    display: none;
+  }
+
+  .impresion {
+    display: block;
+    color: #000;
+    font-size: 11pt;
+  }
+
+  .impresion h1 {
+    margin: 0;
+    font-size: 18pt;
+  }
+
+  .impresion header p {
+    margin: 2px 0 12px;
+    color: #444;
+  }
+
+  .impresion h2 {
+    margin: 16px 0 6px;
+    font-size: 13pt;
+  }
+
+  .impresion dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 16px;
+    margin: 0;
+  }
+
+  .impresion dt {
+    font-weight: 600;
+  }
+
+  .impresion dd {
+    margin: 0;
+  }
+
+  .impresion-notas {
+    white-space: pre-wrap;
+  }
+
+  .impresion table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .impresion th,
+  .impresion td {
+    padding: 3px 6px;
+    border-bottom: 1px solid #ccc;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .impresion .num {
+    text-align: right;
+  }
+
+  .impresion tr {
+    break-inside: avoid;
+  }
+}

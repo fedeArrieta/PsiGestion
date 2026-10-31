@@ -12,6 +12,8 @@ import type { PacienteConResumen, Turno } from "../tipos";
 import { ESTADOS_TURNO } from "../tipos";
 import { leerMonto, montoEditable, pesos } from "../formato";
 import { aIsoLocal, desdeIsoLocal } from "../fechas";
+import ImpresionFicha from "./ImpresionFicha";
+import { textoError } from "../errores";
 
 interface Props {
   /** null = paciente nuevo */
@@ -34,6 +36,8 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [imprimiendo, setImprimiendo] = useState(false);
+  const terminarImpresion = useCallback(() => setImprimiendo(false), []);
 
   useEffect(() => {
     const alPresionar = (e: KeyboardEvent) => e.key === "Escape" && onCerrar();
@@ -46,7 +50,7 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
   }, [paciente]);
 
   useEffect(() => {
-    cargarTurnos().catch((e) => setError(String(e)));
+    cargarTurnos().catch((e) => setError(textoError(e, "cargar turnos del paciente")));
   }, [cargarTurnos]);
 
   async function ejecutar(accion: () => Promise<void>) {
@@ -55,7 +59,7 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
     try {
       await accion();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(textoError(e, "ficha de paciente"));
     } finally {
       setOcupado(false);
     }
@@ -139,6 +143,11 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
                 {paciente.activo ? "Dar de baja" : "Reactivar"}
               </button>
             )}
+            {paciente && (
+              <button type="button" onClick={() => setImprimiendo(true)} disabled={ocupado || imprimiendo}>
+                Imprimir o guardar PDF
+              </button>
+            )}
             <span className="crece" />
             <button type="button" onClick={onCerrar} disabled={ocupado}>
               Cerrar
@@ -179,6 +188,7 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
           </section>
         )}
       </div>
+      {paciente && imprimiendo && <ImpresionFicha paciente={paciente} turnos={turnos} onTerminar={terminarImpresion} />}
     </div>
   );
 }
