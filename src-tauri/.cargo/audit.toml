@@ -1,0 +1,7 @@
+# Configuración de `cargo audit` (se corre en el CI, ver .github/workflows/seguridad.yml).
+[advisories]
+ignore = [
+  # rsa (ataque Marvin): figura en Cargo.lock por sqlx-mysql, pero no se compila
+  # en la app (solo usamos SQLite; `cargo tree -i rsa` no muestra nada). No hay versión corregida.
+  "RUSTSEC-2023-0071",
+]
