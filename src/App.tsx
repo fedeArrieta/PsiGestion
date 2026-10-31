@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { obtenerDb } from "./db";
+import Agenda from "./agenda/Agenda";
 import "./App.css";
 
 type Seccion = "agenda" | "pacientes" | "finanzas";
@@ -12,7 +13,7 @@ const SECCIONES: { id: Seccion; titulo: string; descripcion: string }[] = [
 
 type EstadoDb =
   | { tipo: "cargando" }
-  | { tipo: "ok"; pacientes: number; turnos: number }
+  | { tipo: "ok" }
   | { tipo: "error"; mensaje: string };
 
 function App() {
@@ -23,9 +24,8 @@ function App() {
     (async () => {
       try {
         const db = await obtenerDb();
-        const [p] = await db.select<{ n: number }[]>("SELECT COUNT(*) AS n FROM pacientes");
-        const [t] = await db.select<{ n: number }[]>("SELECT COUNT(*) AS n FROM turnos");
-        setEstadoDb({ tipo: "ok", pacientes: p.n, turnos: t.n });
+        await db.select("SELECT 1");
+        setEstadoDb({ tipo: "ok" });
       } catch (e) {
         setEstadoDb({ tipo: "error", mensaje: String(e) });
       }
@@ -49,15 +49,20 @@ function App() {
         ))}
         <div className="estado-db">
           {estadoDb.tipo === "cargando" && "Conectando base de datos…"}
-          {estadoDb.tipo === "ok" &&
-            `Base de datos lista · ${estadoDb.pacientes} pacientes · ${estadoDb.turnos} turnos`}
+          {estadoDb.tipo === "ok" && "Base de datos lista"}
           {estadoDb.tipo === "error" && `Error en la base de datos: ${estadoDb.mensaje}`}
         </div>
       </nav>
       <main className="contenido">
-        <h2>{actual.titulo}</h2>
-        <p className="descripcion">{actual.descripcion}</p>
-        <p className="pendiente">Esta sección se construye en los próximos pasos.</p>
+        {seccion === "agenda" ? (
+          <Agenda />
+        ) : (
+          <>
+            <h2>{actual.titulo}</h2>
+            <p className="descripcion">{actual.descripcion}</p>
+            <p className="pendiente">Esta sección se construye en los próximos pasos.</p>
+          </>
+        )}
       </main>
     </div>
   );
