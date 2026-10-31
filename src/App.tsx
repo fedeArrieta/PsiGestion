@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { obtenerDb } from "./db";
 import Agenda from "./agenda/Agenda";
+import Pacientes from "./pacientes/Pacientes";
 import "./App.css";
 
 type Seccion = "agenda" | "pacientes" | "finanzas";
@@ -56,6 +57,8 @@ function App() {
       <main className="contenido">
         {seccion === "agenda" ? (
           <Agenda />
+        ) : seccion === "pacientes" ? (
+          <Pacientes />
         ) : (
           <>
             <h2>{actual.titulo}</h2>
