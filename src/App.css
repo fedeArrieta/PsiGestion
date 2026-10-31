@@ -815,3 +815,77 @@ button.quitar:hover:not(:disabled) {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Copias de seguridad ---------- */
+
+.copias {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 900px;
+}
+
+.copias h2 {
+  margin: 0;
+}
+
+.copias h3 {
+  margin: 0;
+}
+
+.copias-estado,
+.copias-carpeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.copias-carpeta code {
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+
+.copias-conservar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.copias-conservar input {
+  width: 80px;
+}
+
+.aviso-menu {
+  margin-top: 8px;
+  text-align: left;
+  font-size: 0.8rem;
+  border: none;
+}
+
+.aviso-menu.aviso {
+  color: #93370d;
+  background: #fef0c7;
+}
+
+.aviso-menu.error {
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.aviso-menu.nota {
+  color: var(--acento);
+  background: var(--acento-suave);
+}
+
+.aviso-menu:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.aviso-menu.aviso:hover:not(:disabled) {
+  background: #fef0c7;
+}
+
+.aviso-menu.error:hover:not(:disabled) {
+  background: #fee4e2;
+}

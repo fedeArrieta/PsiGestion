@@ -14,8 +14,8 @@ Prioridades:
 
 | # | Requerimiento | Prioridad | Estado actual |
 |---|---|---|---|
-| 1 | Copias de seguridad automáticas y restauración | Alta | No existe |
-| 2 | Integridad de la base (claves foráneas, transacciones, modo WAL) | Alta | Parcial |
+| 1 | Copias de seguridad automáticas y restauración | Alta | Hecho (paso 1) |
+| 2 | Integridad de la base (claves foráneas, transacciones, modo WAL) | Alta | Hecho (paso 1) |
 | 3 | Bloqueo de la app con contraseña o PIN | Alta | No existe |
 | 4 | Cifrado de la base de datos | Alta | No existe |
 | 5 | Endurecer la seguridad de Tauri (CSP y permisos) | Alta | Parcial |
@@ -61,10 +61,10 @@ Hoy toda la información está en un único archivo. Si el disco falla, la compu
 
 ### 2. Integridad de la base (Alta)
 
-- Activar `PRAGMA foreign_keys = ON` al abrir la conexión en la app. Hoy solo está activo en los tests, así que la base real no impide, por ejemplo, un turno con un paciente inexistente.
-- Usar transacciones en las operaciones de varios pasos (por ejemplo, copiar los gastos fijos al mes siguiente) para que no queden a medias.
-- Activar el modo `WAL` para que un corte de luz durante una escritura no corrompa el archivo.
-- Ejecutar `PRAGMA integrity_check` al iniciar (o antes de cada copia de seguridad) y avisar si falla.
+Revisando el plugin de SQLite al implementar este punto, resultó que ya activa las claves foráneas en cada conexión y crea la base en modo `WAL`, así que esas dos cosas ya estaban cubiertas (ahora hay una prueba que lo verifica). Lo que se agregó:
+
+- Transacciones para las operaciones de varios pasos (por ejemplo, cambiar la tarifa de un paciente y de sus turnos futuros), con un comando en Rust, porque el plugin usa varias conexiones y un `BEGIN` desde la interfaz no es confiable.
+- `PRAGMA quick_check` al iniciar: si la base está dañada se avisa, se sugiere restaurar una copia y no se hace la copia automática para no guardar una base dañada.
 
 ### 3. Bloqueo de la app con contraseña o PIN (Alta)
 
@@ -185,7 +185,7 @@ Ya cubierto: la app no necesita internet. Solo hay que preservarlo al sumar func
 
 ## Orden sugerido
 
-1. Integridad de la base (2) y copias de seguridad (1): son rápidas y evitan perder datos.
+1. ~~Integridad de la base (2) y copias de seguridad (1)~~: hecho.
 2. CSP y permisos (5).
 3. Contraseña (3) y cifrado (4), juntos, porque la clave del cifrado sale de la contraseña.
 4. Logs (7) y exportación (6).
