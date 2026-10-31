@@ -93,10 +93,6 @@ body {
   margin: 0 0 4px;
 }
 
-.descripcion {
-  margin: 0 0 24px;
-  color: var(--texto-suave);
-}
 
 .pendiente {
   padding: 24px;
@@ -379,7 +375,8 @@ textarea {
 
 /* ---------- Pacientes ---------- */
 
-.contenido:has(.pacientes) {
+.contenido:has(.pacientes),
+.contenido:has(.finanzas) {
   padding: 20px 24px;
 }
 
@@ -579,4 +576,242 @@ label.check,
   float: right;
   font-weight: 700;
   color: #2e7d32;
+}
+
+/* ---------- Finanzas ---------- */
+
+.finanzas {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tarjetas {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+}
+
+.tarjeta-titulo {
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.tarjeta-valor {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tarjeta-detalle {
+  font-size: 0.78rem;
+  color: var(--texto-suave);
+}
+
+.tarjeta.positivo .tarjeta-valor {
+  color: #2e7d32;
+}
+
+.tarjeta.negativo .tarjeta-valor {
+  color: #b42318;
+}
+
+.columnas-finanzas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+}
+
+.panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.panel-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.objetivo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.objetivo input {
+  font-size: 1.1rem;
+  max-width: 240px;
+}
+
+.nota {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--borde);
+}
+
+.meta-cabecera {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.meta-cabecera strong {
+  white-space: nowrap;
+}
+
+.meta-cabecera span {
+  text-align: right;
+  color: var(--texto-suave);
+  font-variant-numeric: tabular-nums;
+}
+
+.barra-progreso {
+  position: relative;
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--fondo);
+  border: 1px solid var(--borde);
+}
+
+.barra-progreso .relleno.realizado {
+  background: var(--acento);
+  border-radius: 6px 0 0 6px;
+}
+
+.barra-progreso .relleno.programado {
+  background: repeating-linear-gradient(45deg, var(--acento-suave), var(--acento-suave) 4px, transparent 4px, transparent 8px);
+  border: 1px solid var(--acento);
+  border-left: none;
+  box-sizing: border-box;
+}
+
+.barra-progreso .relleno.programado[style*="width: 0%"] {
+  border: none;
+}
+
+.marca-meta {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--texto);
+}
+
+.meta-mensaje {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.meta.cumplida .meta-mensaje {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.form-gasto {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.form-gasto input:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-gasto .monto {
+  width: 120px;
+}
+
+.lista-gastos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lista-gastos li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--borde);
+}
+
+.lista-gastos li.editando {
+  background: var(--acento-suave);
+}
+
+.lista-gastos li.total {
+  border-bottom: none;
+  font-weight: 600;
+}
+
+button.enlace {
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+}
+
+button.enlace:hover:not(:disabled) {
+  background: none;
+  color: var(--acento);
+}
+
+button.quitar,
+.quitar-espacio {
+  width: 28px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--texto-suave);
+  font-size: 1.1rem;
+}
+
+button.quitar:hover:not(:disabled) {
+  color: #b42318;
+  background: none;
+}
+
+@media (max-width: 1100px) {
+  .tarjetas {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .columnas-finanzas {
+    grid-template-columns: 1fr;
+  }
 }

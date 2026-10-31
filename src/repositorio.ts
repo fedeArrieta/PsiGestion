@@ -1,4 +1,12 @@
-import type { EstadoTurno, Paciente, PacienteConResumen, Turno, TurnoConPaciente } from "./tipos";
+import type {
+  EstadoTurno,
+  Gasto,
+  Paciente,
+  PacienteConResumen,
+  ResumenMes,
+  Turno,
+  TurnoConPaciente,
+} from "./tipos";
 
 /** Lo mínimo que se usa de la base. En la app es tauri-plugin-sql; en los tests, SQLite de Node. */
 export interface Db {
@@ -163,4 +171,113 @@ export async function saldarPaciente(db: Db, pacienteId: number): Promise<number
     [pacienteId],
   );
   return r.rowsAffected;
+}
+
+// ---------- Finanzas ----------
+
+export interface DatosGasto {
+  mes: string;
+  descripcion: string;
+  monto: number;
+  fijo?: boolean;
+}
+
+const MES = /^\d{4}-\d{2}$/;
+
+function validarGasto(datos: DatosGasto): string {
+  if (!MES.test(datos.mes)) throw new Error("El mes no es válido.");
+  const descripcion = datos.descripcion.trim();
+  if (!descripcion) throw new Error("Escribí una descripción para el gasto.");
+  if (!(datos.monto >= 0)) throw new Error("El monto del gasto no es válido.");
+  return descripcion;
+}
+
+export function listarGastos(db: Db, mes: string): Promise<Gasto[]> {
+  return db.select<Gasto[]>("SELECT * FROM gastos WHERE mes = $1 ORDER BY fijo DESC, monto DESC, id", [mes]);
+}
+
+export async function crearGasto(db: Db, datos: DatosGasto): Promise<number> {
+  const descripcion = validarGasto(datos);
+  const r = await db.execute("INSERT INTO gastos (mes, descripcion, monto, fijo) VALUES ($1, $2, $3, $4)", [
+    datos.mes,
+    descripcion,
+    datos.monto,
+    datos.fijo ? 1 : 0,
+  ]);
+  if (r.lastInsertId == null) throw new Error("No se pudo guardar el gasto.");
+  return r.lastInsertId;
+}
+
+export async function actualizarGasto(db: Db, id: number, datos: DatosGasto): Promise<void> {
+  const descripcion = validarGasto(datos);
+  await db.execute("UPDATE gastos SET mes = $1, descripcion = $2, monto = $3, fijo = $4 WHERE id = $5", [
+    datos.mes,
+    descripcion,
+    datos.monto,
+    datos.fijo ? 1 : 0,
+    id,
+  ]);
+}
+
+export async function eliminarGasto(db: Db, id: number): Promise<void> {
+  await db.execute("DELETE FROM gastos WHERE id = $1", [id]);
+}
+
+/** Copia los gastos fijos de un mes a otro, salvo los que ya existan con la misma descripción. */
+export async function copiarGastosFijos(db: Db, desde: string, hacia: string): Promise<number> {
+  const r = await db.execute(
+    `INSERT INTO gastos (mes, descripcion, monto, fijo)
+     SELECT $2, g.descripcion, g.monto, 1 FROM gastos g
+      WHERE g.mes = $1 AND g.fijo = 1
+        AND NOT EXISTS (SELECT 1 FROM gastos h WHERE h.mes = $2 AND h.descripcion = g.descripcion)`,
+    [desde, hacia],
+  );
+  return r.rowsAffected;
+}
+
+/** Objetivo del mes, o el del último mes anterior que tenga uno. null si nunca se cargó. */
+export async function obtenerObjetivo(db: Db, mes: string): Promise<number | null> {
+  const filas = await db.select<{ monto: number }[]>(
+    "SELECT monto FROM objetivos WHERE mes <= $1 ORDER BY mes DESC LIMIT 1",
+    [mes],
+  );
+  return filas.length ? filas[0].monto : null;
+}
+
+export async function guardarObjetivo(db: Db, mes: string, monto: number): Promise<void> {
+  if (!MES.test(mes)) throw new Error("El mes no es válido.");
+  if (!(monto >= 0)) throw new Error("El objetivo no es válido.");
+  await db.execute(
+    "INSERT INTO objetivos (mes, monto) VALUES ($1, $2) ON CONFLICT (mes) DO UPDATE SET monto = excluded.monto",
+    [mes, monto],
+  );
+}
+
+/** Resumen de ingresos, turnos y gastos de un mes (AAAA-MM). */
+export async function resumenMes(db: Db, mes: string): Promise<ResumenMes> {
+  if (!MES.test(mes)) throw new Error("El mes no es válido.");
+  const [t] = await db.select<Omit<ResumenMes, "gastos" | "precio_promedio">[]>(
+    `SELECT
+        COALESCE(SUM(CASE WHEN estado = 'realizado' THEN monto END), 0) AS facturado,
+        COALESCE(SUM(CASE WHEN estado = 'realizado' AND pagado = 1 THEN monto END), 0) AS cobrado,
+        COALESCE(SUM(estado = 'realizado'), 0) AS sesiones_realizadas,
+        COALESCE(SUM(CASE WHEN estado = 'programado' THEN monto END), 0) AS programado,
+        COALESCE(SUM(estado = 'programado'), 0) AS sesiones_programadas
+       FROM turnos WHERE substr(inicio, 1, 7) = $1`,
+    [mes],
+  );
+  const [g] = await db.select<{ total: number }[]>(
+    "SELECT COALESCE(SUM(monto), 0) AS total FROM gastos WHERE mes = $1",
+    [mes],
+  );
+  // Precio promedio: el de las sesiones del mes; si no hay, el de los pacientes activos.
+  const [p] = await db.select<{ promedio: number | null }[]>(
+    `SELECT COALESCE(
+        (SELECT AVG(monto) FROM turnos
+          WHERE substr(inicio, 1, 7) = $1 AND estado IN ('realizado', 'programado') AND monto > 0),
+        (SELECT AVG(monto_sesion) FROM pacientes WHERE activo = 1 AND monto_sesion > 0)
+     ) AS promedio`,
+    [mes],
+  );
+  return { ...t, gastos: g.total, precio_promedio: p.promedio ?? 0 };
 }

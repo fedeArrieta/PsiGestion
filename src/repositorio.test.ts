@@ -3,11 +3,19 @@ import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  actualizarGasto,
   actualizarPaciente,
   actualizarTurno,
   cambiarActivoPaciente,
+  copiarGastosFijos,
+  crearGasto,
   crearPaciente,
   crearTurno,
+  eliminarGasto,
+  guardarObjetivo,
+  listarGastos,
+  obtenerObjetivo,
+  resumenMes,
   eliminarTurno,
   listarPacientes,
   listarPacientesConResumen,
@@ -166,6 +174,78 @@ describe("repositorio", () => {
       await actualizarTurno(db, t1, datos);
       const t = (await listarTurnosDePaciente(db, ana)).find((x) => x.id === t1);
       expect(t?.pagado).toBe(1);
+    });
+  });
+
+  describe("finanzas", () => {
+    it("gastos: alta, edición, baja y copia de fijos al mes siguiente", async () => {
+      const alquiler = await crearGasto(db, { mes: "2026-10", descripcion: "Alquiler consultorio", monto: 200000, fijo: true });
+      await crearGasto(db, { mes: "2026-10", descripcion: "Libros", monto: 30000 });
+      const sup = await crearGasto(db, { mes: "2026-10", descripcion: "Supervisión", monto: 40000, fijo: true });
+      await actualizarGasto(db, alquiler, { mes: "2026-10", descripcion: "Alquiler consultorio", monto: 220000, fijo: true });
+      expect((await listarGastos(db, "2026-10")).map((g) => g.descripcion)).toEqual([
+        "Alquiler consultorio",
+        "Supervisión",
+        "Libros",
+      ]);
+
+      expect(await copiarGastosFijos(db, "2026-10", "2026-11")).toBe(2);
+      // Copiar de nuevo no duplica
+      expect(await copiarGastosFijos(db, "2026-10", "2026-11")).toBe(0);
+      const nov = await listarGastos(db, "2026-11");
+      expect(nov.map((g) => [g.descripcion, g.monto])).toEqual([
+        ["Alquiler consultorio", 220000],
+        ["Supervisión", 40000],
+      ]);
+
+      await eliminarGasto(db, sup);
+      expect(await listarGastos(db, "2026-10")).toHaveLength(2);
+      await expect(crearGasto(db, { mes: "2026-10", descripcion: " ", monto: 1 })).rejects.toThrow();
+    });
+
+    it("el objetivo se hereda del último mes que lo tenga", async () => {
+      expect(await obtenerObjetivo(db, "2026-10")).toBeNull();
+      await guardarObjetivo(db, "2026-09", 800000);
+      await guardarObjetivo(db, "2026-09", 900000);
+      expect(await obtenerObjetivo(db, "2026-10")).toBe(900000);
+      await guardarObjetivo(db, "2026-11", 1000000);
+      expect(await obtenerObjetivo(db, "2026-10")).toBe(900000);
+      expect(await obtenerObjetivo(db, "2026-12")).toBe(1000000);
+      expect(await obtenerObjetivo(db, "2026-08")).toBeNull();
+    });
+
+    it("resumen del mes con ingresos, cobros, programados y gastos", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 25000 });
+      const beto = await crearPaciente(db, { nombre: "Beto", monto_sesion: 15000 });
+      const t = (p: number, inicio: string, estado: "realizado" | "programado" | "cancelado" | "ausente") =>
+        crearTurno(db, { paciente_id: p, inicio, duracion_min: 50, estado });
+      const pagado = await t(ana, "2026-11-02T10:00", "realizado");
+      await t(beto, "2026-11-03T10:00", "realizado");
+      await t(ana, "2026-11-09T10:00", "programado");
+      await t(ana, "2026-11-10T10:00", "cancelado");
+      await t(beto, "2026-11-11T10:00", "ausente");
+      await t(ana, "2026-10-30T10:00", "realizado"); // otro mes
+      await marcarPagado(db, pagado, true);
+      await crearGasto(db, { mes: "2026-11", descripcion: "Alquiler", monto: 100000 });
+
+      expect(await resumenMes(db, "2026-11")).toEqual({
+        facturado: 40000,
+        cobrado: 25000,
+        sesiones_realizadas: 2,
+        programado: 25000,
+        sesiones_programadas: 1,
+        gastos: 100000,
+        precio_promedio: (25000 + 15000 + 25000) / 3,
+      });
+    });
+
+    it("sin turnos en el mes, el precio promedio sale de los pacientes activos", async () => {
+      await crearPaciente(db, { nombre: "Ana", monto_sesion: 20000 });
+      await crearPaciente(db, { nombre: "Beto", monto_sesion: 30000 });
+      const c = await crearPaciente(db, { nombre: "Caro", monto_sesion: 90000 });
+      await cambiarActivoPaciente(db, c, false);
+      const r = await resumenMes(db, "2027-01");
+      expect(r).toMatchObject({ facturado: 0, gastos: 0, precio_promedio: 25000 });
     });
   });
 });
