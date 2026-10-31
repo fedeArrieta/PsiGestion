@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { obtenerDb } from "./db";
 import Agenda from "./agenda/Agenda";
 import Pacientes from "./pacientes/Pacientes";
+import Finanzas from "./finanzas/Finanzas";
 import "./App.css";
 
 type Seccion = "agenda" | "pacientes" | "finanzas";
 
-const SECCIONES: { id: Seccion; titulo: string; descripcion: string }[] = [
-  { id: "agenda", titulo: "Agenda", descripcion: "Turnos del día y de la semana." },
-  { id: "pacientes", titulo: "Pacientes", descripcion: "Datos de contacto y monto por sesión." },
-  { id: "finanzas", titulo: "Finanzas", descripcion: "Objetivo mensual, gastos y sesiones necesarias." },
+const SECCIONES: { id: Seccion; titulo: string }[] = [
+  { id: "agenda", titulo: "Agenda" },
+  { id: "pacientes", titulo: "Pacientes" },
+  { id: "finanzas", titulo: "Finanzas" },
 ];
 
 type EstadoDb =
@@ -33,8 +34,6 @@ function App() {
     })();
   }, []);
 
-  const actual = SECCIONES.find((s) => s.id === seccion)!;
-
   return (
     <div className="app">
       <nav className="menu">
@@ -55,17 +54,9 @@ function App() {
         </div>
       </nav>
       <main className="contenido">
-        {seccion === "agenda" ? (
-          <Agenda />
-        ) : seccion === "pacientes" ? (
-          <Pacientes />
-        ) : (
-          <>
-            <h2>{actual.titulo}</h2>
-            <p className="descripcion">{actual.descripcion}</p>
-            <p className="pendiente">Esta sección se construye en los próximos pasos.</p>
-          </>
-        )}
+        {seccion === "agenda" && <Agenda />}
+        {seccion === "pacientes" && <Pacientes />}
+        {seccion === "finanzas" && <Finanzas />}
       </main>
     </div>
   );
