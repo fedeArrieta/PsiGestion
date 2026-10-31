@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  borrarCopiasSinCifrar,
   guardarCarpeta,
   guardarConservar,
   hacerCopia,
@@ -136,6 +137,25 @@ export default function Copias({ onCambio }: { onCambio: () => void }) {
 
       <section className="panel">
         <h3>Copias guardadas</h3>
+        {copias.some((c) => !c.cifrada) && (
+          <div className="aviso copias-estado">
+            <span>
+              Hay copias de antes de activar la contraseña que no están cifradas: cualquiera que tenga el archivo puede
+              leerlas.
+            </span>
+            <button
+              className="peligro"
+              disabled={ocupado || !copias.some((c) => c.cifrada)}
+              title={copias.some((c) => c.cifrada) ? undefined : "Primero hacé una copia cifrada"}
+              onClick={() => {
+                if (window.confirm("¿Borrar las copias que no están cifradas? Las cifradas se conservan."))
+                  ejecutar(async () => `Se borraron ${await borrarCopiasSinCifrar(config.carpeta)} copias sin cifrar.`);
+              }}
+            >
+              Borrar copias sin cifrar
+            </button>
+          </div>
+        )}
         {copias.length === 0 ? (
           <p className="vacio">No hay copias en esta carpeta.</p>
         ) : (
@@ -155,7 +175,10 @@ export default function Copias({ onCambio }: { onCambio: () => void }) {
                   return (
                     <tr key={c.ruta}>
                       <td>{fmtFecha.format(info?.fecha ?? new Date(c.modificada))}</td>
-                      <td>{info ? TEXTO_TIPO[info.tipo] : "Otra"}</td>
+                      <td>
+                        {info ? TEXTO_TIPO[info.tipo] : "Otra"}
+                        {!c.cifrada && <span className="etiqueta">Sin cifrar</span>}
+                      </td>
                       <td className="num">{tamanoTexto(c.bytes)}</td>
                       <td className="num">
                         <button disabled={ocupado} onClick={() => restaurar(c)}>

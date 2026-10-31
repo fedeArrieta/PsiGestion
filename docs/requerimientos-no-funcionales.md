@@ -16,8 +16,8 @@ Prioridades:
 |---|---|---|---|
 | 1 | Copias de seguridad automáticas y restauración | Alta | Hecho (paso 1) |
 | 2 | Integridad de la base (claves foráneas, transacciones, modo WAL) | Alta | Hecho (paso 1) |
-| 3 | Bloqueo de la app con contraseña o PIN | Alta | No existe |
-| 4 | Cifrado de la base de datos | Alta | No existe |
+| 3 | Bloqueo de la app con contraseña o PIN | Alta | Hecho (paso 3) |
+| 4 | Cifrado de la base de datos | Alta | Hecho (paso 3) |
 | 5 | Endurecer la seguridad de Tauri (CSP y permisos) | Alta | Hecho (paso 2) |
 | 6 | Exportación de datos (portabilidad) | Media | No existe |
 | 7 | Registro de errores (logs) | Media | No existe |
@@ -66,21 +66,25 @@ Revisando el plugin de SQLite al implementar este punto, resultó que ya activa 
 - Transacciones para las operaciones de varios pasos (por ejemplo, cambiar la tarifa de un paciente y de sus turnos futuros), con un comando en Rust, porque el plugin usa varias conexiones y un `BEGIN` desde la interfaz no es confiable.
 - `PRAGMA quick_check` al iniciar: si la base está dañada se avisa, se sugiere restaurar una copia y no se hace la copia automática para no guardar una base dañada.
 
-### 3. Bloqueo de la app con contraseña o PIN (Alta)
+### 3. Bloqueo de la app con contraseña (Alta)
 
-La app guarda datos de salud mental (notas de pacientes y de sesiones). Cualquiera que use la computadora puede abrirla.
+Hecho en el paso 3:
 
-- Contraseña o PIN al abrir la app, guardado como hash (Argon2), nunca en texto plano.
-- Bloqueo automático tras X minutos sin uso (configurable, por ejemplo 10).
-- Opción para recuperar el acceso (por ejemplo, una clave de recuperación que se muestra una sola vez al configurar).
+- Contraseña obligatoria de al menos 8 caracteres. Al actualizar, la app la pide la primera vez que se abre.
+- No se guarda la contraseña ni un hash de ella: se guarda la clave de datos cifrada con una clave derivada de la contraseña (Argon2id, 64 MiB, 3 pasadas, y XChaCha20-Poly1305) en `seguridad.json`. Tras un intento fallido hay una espera de un segundo.
+- Clave de recuperación de 32 caracteres, que se muestra una sola vez. Con ella se entra y se elige una contraseña nueva. Desde la sección Seguridad se puede generar otra y cambiar la contraseña.
+- Bloqueo automático tras 10 minutos sin uso (configurable, o nunca) y botón Bloquear. Al bloquear se cierra la base y se borra la clave de la memoria.
 
 ### 4. Cifrado de la base de datos (Alta)
 
-Aunque la app tenga contraseña, el archivo `psigestion.db` se puede abrir con cualquier visor de SQLite.
+Hecho en el paso 3:
 
-- Cifrar la base con SQLCipher (o similar), con la clave derivada de la contraseña del punto 3.
-- Alternativa más simple: recomendar y verificar que Windows tenga BitLocker activo, mostrando un aviso si no.
-- La Ley 26.529 (derechos del paciente e historia clínica) y la Ley 25.326 (protección de datos personales) exigen confidencialidad e integridad de los datos de salud; el cifrado ayuda a cumplirlas.
+- La base usa SQLCipher (AES-256) con la clave de datos. La abre Rust al desbloquear (`src-tauri/src/base.rs`), así que sin la contraseña la interfaz no puede leer nada.
+- Una base sin cifrar de una versión anterior, o restaurada desde una copia vieja, se cifra sola al desbloquear.
+- Las copias de seguridad quedan cifradas con la misma clave. Junto a ellas se guarda `psigestion-llave.json` (protegido por la contraseña y la clave de recuperación), que hace falta para abrirlas en otra computadora: la app lo pide si encuentra una base cifrada sin ese archivo.
+- La sección Copias marca las copias viejas sin cifrar y permite borrarlas.
+
+**Riesgo aceptado**: si se pierden la contraseña y la clave de recuperación, los datos no se pueden recuperar.
 
 ### 5. Endurecer la seguridad de Tauri (Alta)
 
@@ -189,7 +193,7 @@ Ya cubierto: la app no necesita internet. Solo hay que preservarlo al sumar func
 
 1. ~~Integridad de la base (2) y copias de seguridad (1)~~: hecho.
 2. ~~CSP y permisos (5)~~: hecho.
-3. Contraseña (3) y cifrado (4), juntos, porque la clave del cifrado sale de la contraseña.
+3. ~~Contraseña (3) y cifrado (4)~~: hecho.
 4. Logs (7) y exportación (6).
 5. Precisión de montos (10) y papelera (11).
 6. Versionado (16), aviso de actualización y actualizaciones (8), y firma (9). El aviso y el versionado van juntos, porque el aviso necesita saber qué versión está instalada.
