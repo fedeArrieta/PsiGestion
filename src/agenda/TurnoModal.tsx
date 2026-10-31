@@ -3,6 +3,7 @@ import type { EstadoTurno, Paciente, TurnoConPaciente } from "../tipos";
 import { ESTADOS_TURNO } from "../tipos";
 import { turnosSuperpuestos } from "./logica";
 import { horaTexto } from "../fechas";
+import { leerMonto, pesos } from "../formato";
 
 export interface ResultadoModal {
   paciente_id: number | null;
@@ -11,6 +12,7 @@ export interface ResultadoModal {
   duracion_min: number;
   estado: EstadoTurno;
   notas: string;
+  pagado: boolean;
 }
 
 interface Props {
@@ -40,6 +42,7 @@ export default function TurnoModal(props: Props) {
   const [duracion, setDuracion] = useState(String(turno?.duracion_min ?? props.duracionPredeterminada));
   const [estado, setEstado] = useState<EstadoTurno>(turno?.estado ?? "programado");
   const [notas, setNotas] = useState(turno?.notas ?? "");
+  const [pagado, setPagado] = useState(Boolean(turno?.pagado));
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -66,10 +69,7 @@ export default function TurnoModal(props: Props) {
   const superpuestos = useMemo(() => {
     const dur = Number(duracion);
     if (!fecha || !hora || !(dur > 0) || estado === "cancelado") return [];
-    return turnosSuperpuestos(
-      { id: turno?.id, inicio: `${fecha}T${hora}`, duracion_min: dur },
-      delDia,
-    );
+    return turnosSuperpuestos({ id: turno?.id, inicio: `${fecha}T${hora}`, duracion_min: dur }, delDia);
   }, [fecha, hora, duracion, estado, turno?.id, delDia]);
 
   async function guardar(e: React.FormEvent) {
@@ -78,7 +78,7 @@ export default function TurnoModal(props: Props) {
     const esNuevo = pacienteSel === NUEVO;
     if (!esNuevo && !pacienteSel) return setError("Elegí un paciente.");
     if (esNuevo && !nuevoNombre.trim()) return setError("Escribí el nombre del paciente nuevo.");
-    const monto = nuevoMonto.trim() ? Number(nuevoMonto.replace(",", ".")) : 0;
+    const monto = leerMonto(nuevoMonto);
     if (esNuevo && !(monto >= 0)) return setError("El monto por sesión no es válido.");
     setGuardando(true);
     try {
@@ -89,6 +89,7 @@ export default function TurnoModal(props: Props) {
         duracion_min: Number(duracion),
         estado,
         notas,
+        pagado,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -98,7 +99,8 @@ export default function TurnoModal(props: Props) {
 
   async function eliminar() {
     if (!turno) return;
-    if (!window.confirm("¿Eliminar este turno? Si el paciente no vino, mejor marcalo como Cancelado o Ausente.")) return;
+    if (!window.confirm("¿Eliminar este turno? Si el paciente no vino, mejor marcalo como Cancelado o Ausente."))
+      return;
     setGuardando(true);
     try {
       await props.onEliminar(turno.id);
@@ -119,6 +121,9 @@ export default function TurnoModal(props: Props) {
             <option value="" disabled>
               Elegí un paciente…
             </option>
+            {turno && !pacientes.some((p) => p.id === turno.paciente_id) && (
+              <option value={turno.paciente_id}>{turno.paciente_nombre} (dado de baja)</option>
+            )}
             {pacientes.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.nombre}
@@ -136,7 +141,12 @@ export default function TurnoModal(props: Props) {
             </label>
             <label>
               Monto por sesión
-              <input inputMode="decimal" placeholder="0" value={nuevoMonto} onChange={(e) => setNuevoMonto(e.target.value)} />
+              <input
+                inputMode="decimal"
+                placeholder="0"
+                value={nuevoMonto}
+                onChange={(e) => setNuevoMonto(e.target.value)}
+              />
             </label>
           </div>
         )}
@@ -152,21 +162,34 @@ export default function TurnoModal(props: Props) {
           </label>
           <label>
             Duración (min)
-            <input type="number" min={5} step={5} required value={duracion} onChange={(e) => setDuracion(e.target.value)} />
+            <input
+              type="number"
+              min={5}
+              step={5}
+              required
+              value={duracion}
+              onChange={(e) => setDuracion(e.target.value)}
+            />
           </label>
         </div>
 
         {turno && (
-          <label>
-            Estado
-            <select value={estado} onChange={(e) => setEstado(e.target.value as EstadoTurno)}>
-              {ESTADOS_TURNO.map((e) => (
-                <option key={e.valor} value={e.valor}>
-                  {e.etiqueta}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="fila">
+            <label className="crece">
+              Estado
+              <select value={estado} onChange={(e) => setEstado(e.target.value as EstadoTurno)}>
+                {ESTADOS_TURNO.map((e) => (
+                  <option key={e.valor} value={e.valor}>
+                    {e.etiqueta}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={pagado} onChange={(e) => setPagado(e.target.checked)} />
+              Pagado{turno.monto ? ` (${pesos(turno.monto)})` : ""}
+            </label>
+          </div>
         )}
 
         <label>

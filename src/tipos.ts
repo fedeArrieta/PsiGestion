@@ -17,6 +17,12 @@ export interface Paciente {
   activo: number;
 }
 
+export interface PacienteConResumen extends Paciente {
+  sesiones_realizadas: number;
+  saldo_pendiente: number;
+  ultima_sesion: string | null;
+}
+
 export interface Turno {
   id: number;
   paciente_id: number;

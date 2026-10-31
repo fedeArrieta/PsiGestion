@@ -101,6 +101,7 @@ export default function Agenda() {
       duracion_min: r.duracion_min,
       estado: r.estado,
       notas: r.notas,
+      pagado: r.pagado,
     };
     if (edicion?.turno) await actualizarTurno(db, edicion.turno.id, datos);
     else await crearTurno(db, datos);
@@ -193,6 +194,7 @@ export default function Agenda() {
                   >
                     <span className="turno-hora">{horaTexto(turno.inicio)}</span>{" "}
                     <span className="turno-nombre">{turno.paciente_nombre}</span>
+                    {turno.pagado ? <span className="turno-pagado" title="Pagado">$</span> : null}
                   </button>
                 );
               })}

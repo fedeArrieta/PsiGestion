@@ -376,3 +376,207 @@ textarea {
   gap: 8px;
   margin-top: 4px;
 }
+
+/* ---------- Pacientes ---------- */
+
+.contenido:has(.pacientes) {
+  padding: 20px 24px;
+}
+
+.pacientes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.buscador {
+  width: 300px;
+}
+
+label.check,
+.modal label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  display: inline-flex;
+  white-space: nowrap;
+  color: var(--texto);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.modal .fila label.check {
+  width: auto;
+  align-self: flex-end;
+  padding-bottom: 8px;
+}
+
+.resumen {
+  margin: 0;
+  color: var(--texto-suave);
+}
+
+.resumen strong {
+  color: var(--texto);
+}
+
+.tabla-contenedor {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabla th,
+.tabla td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--borde);
+}
+
+.tabla th {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--texto-suave);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+}
+
+.tabla tbody tr {
+  cursor: pointer;
+}
+
+.tabla tbody tr:hover {
+  background: var(--acento-suave);
+}
+
+.tabla tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tabla tr.inactivo td {
+  color: var(--texto-suave);
+}
+
+.num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.deuda {
+  color: #b42318;
+  font-weight: 600;
+}
+
+.vacio {
+  color: var(--texto-suave);
+  text-align: center;
+}
+
+.etiqueta {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  background: var(--borde);
+  color: var(--texto-suave);
+}
+
+.modal small {
+  font-size: 0.75rem;
+}
+
+.modal.ficha {
+  width: min(960px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  flex-direction: row;
+  gap: 24px;
+}
+
+.modal.ficha:not(:has(.ficha-turnos)) {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.modal.ficha:not(:has(.ficha-turnos)) .ficha-datos {
+  flex: 1;
+}
+
+.ficha-datos {
+  flex: 0 0 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ficha-turnos {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding-left: 24px;
+  border-left: 1px solid var(--borde);
+}
+
+.ficha-turnos-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ficha-turnos h4 {
+  margin: 0;
+}
+
+.lista-turnos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.lista-turnos li {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--borde);
+}
+
+.lista-turnos li::first-letter {
+  text-transform: uppercase;
+}
+
+.lista-turnos .estado {
+  width: 80px;
+  color: var(--texto-suave);
+}
+
+.lista-turnos .num {
+  width: 90px;
+}
+
+.lista-turnos li.estado-cancelado,
+.lista-turnos li.estado-programado {
+  color: var(--texto-suave);
+}
+
+.lista-turnos li.estado-cancelado label.check {
+  visibility: hidden;
+}
+
+.turno-pagado {
+  float: right;
+  font-weight: 700;
+  color: #2e7d32;
+}
