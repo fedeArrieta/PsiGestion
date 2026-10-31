@@ -11,6 +11,9 @@ import {
   type ConfigCopias,
 } from "./servicio";
 import { copiaAtrasada, diasSinCopia, leerNombreCopia, tamanoTexto, TEXTO_TIPO, type ArchivoCopia } from "./logica";
+import { textoError } from "../errores";
+import { exportarExcel } from "../exportar/servicio";
+import { mesDe, textoMes } from "../finanzas/calculo";
 
 const fmtFecha = new Intl.DateTimeFormat("es-AR", { dateStyle: "medium", timeStyle: "short" });
 
@@ -28,7 +31,7 @@ export default function Copias({ onCambio }: { onCambio: () => void }) {
       setCopias(await listarCopias(c.carpeta));
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(textoError(e, "cargar copias"));
     }
   }, []);
 
@@ -44,7 +47,7 @@ export default function Copias({ onCambio }: { onCambio: () => void }) {
       if (m) setMensaje(m);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(textoError(e, "copias de seguridad"));
     } finally {
       setOcupado(false);
       await cargar();
@@ -193,6 +196,54 @@ export default function Copias({ onCambio }: { onCambio: () => void }) {
           </div>
         )}
       </section>
+
+      <ExportarExcel />
     </div>
+  );
+}
+
+function ExportarExcel() {
+  const [alcance, setAlcance] = useState<"todo" | "mes">("mes");
+  const [mes, setMes] = useState(() => mesDe(new Date()));
+  const [mensaje, setMensaje] = useState<{ ok: boolean; texto: string } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  async function exportar() {
+    setOcupado(true);
+    setMensaje(null);
+    try {
+      const ruta = await exportarExcel(alcance === "todo" ? null : mes);
+      if (ruta) setMensaje({ ok: true, texto: `Guardado en ${ruta}` });
+    } catch (e) {
+      setMensaje({ ok: false, texto: textoError(e, "exportar a Excel") });
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h3>Exportar a Excel</h3>
+      <p className="nota">
+        Genera un archivo de Excel con los pacientes, los turnos y los gastos, para revisarlos o guardarlos fuera de la
+        app. Ojo: el archivo no está cifrado, guardalo en un lugar seguro.
+      </p>
+      <div className="copias-carpeta">
+        <label className="copias-conservar">
+          <select value={alcance} onChange={(e) => setAlcance(e.target.value as "todo" | "mes")}>
+            <option value="mes">Un mes</option>
+            <option value="todo">Todo</option>
+          </select>
+          {alcance === "mes" && (
+            <input type="month" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} aria-label="Mes" />
+          )}
+        </label>
+        <button className="primario" disabled={ocupado} onClick={exportar}>
+          {ocupado ? "Exportando…" : "Exportar"}
+        </button>
+      </div>
+      {alcance === "mes" && <p className="nota">Turnos y gastos de {textoMes(mes)}; los pacientes van todos.</p>}
+      {mensaje && <p className={mensaje.ok ? "nota" : "error"}>{mensaje.texto}</p>}
+    </section>
   );
 }

@@ -26,6 +26,7 @@ import {
 import { distribuirEnColumnas } from "./logica";
 import { ALTO_HORA, DURACION_PREDETERMINADA, HORA_FIN, HORA_INICIO } from "./config";
 import TurnoModal, { type ResultadoModal } from "./TurnoModal";
+import { textoError } from "../errores";
 
 type Vista = "semana" | "dia";
 type Edicion = { turno: TurnoConPaciente | null; inicioSugerido: string };
@@ -59,7 +60,7 @@ export default function Agenda() {
       setPacientes(p);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(textoError(e, "cargar agenda"));
     }
   }, [dias]);
 

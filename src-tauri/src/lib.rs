@@ -1,5 +1,7 @@
 mod base;
 mod datos;
+mod exportar;
+mod registro;
 mod seguridad;
 
 use tauri::Manager;
@@ -7,12 +9,17 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(registro::plugin())
         .plugin(tauri_plugin_dialog::init())
         // Sin migraciones acá: la base cifrada la abre Rust al desbloquear (ver base.rs).
         .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
             // Antes de abrir la base, aplicar una restauración pendiente.
             let resultado = datos::aplicar_restauracion_pendiente(app.handle());
+            log::info!("PsiGestion {} iniciada", app.package_info().version);
+            if let Some(r) = &resultado {
+                log::info!("restauración al iniciar: {}", if r.starts_with("ok:") { "correcta" } else { r.as_str() });
+            }
             app.manage(datos::EstadoRestauracion(std::sync::Mutex::new(resultado)));
             app.manage(seguridad::EstadoSeguridad::default());
             Ok(())
@@ -33,6 +40,8 @@ pub fn run() {
             seguridad::nueva_recuperacion,
             seguridad::bloquear,
             seguridad::importar_llave,
+            registro::abrir_carpeta_registros,
+            exportar::exportar_excel,
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar PsiGestion");

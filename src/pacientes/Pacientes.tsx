@@ -5,6 +5,7 @@ import type { PacienteConResumen } from "../tipos";
 import { pesos } from "../formato";
 import { desdeIsoLocal } from "../fechas";
 import FichaPaciente from "./FichaPaciente";
+import { textoError } from "../errores";
 
 const fmtFecha = new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", year: "numeric" });
 
@@ -27,7 +28,7 @@ export default function Pacientes() {
       setPacientes(await listarPacientesConResumen(await obtenerDb(), verBajas));
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(textoError(e, "cargar pacientes"));
     }
   }, [verBajas]);
 

@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { obtenerDb } from "../db";
 import { guardarConfiguracion, leerConfiguracion } from "../repositorio";
 import { cambiarContrasena, MINUTOS_BLOQUEO_POR_DEFECTO, nuevaRecuperacion, problemaContrasena } from "./servicio";
+import { textoError } from "../errores";
 
-const textoError = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function leerMinutosBloqueo(): Promise<number> {
   const config = await leerConfiguracion(await obtenerDb());
@@ -23,6 +24,7 @@ export default function Seguridad({ onMinutos }: { onMinutos: (minutos: number) 
       <BloqueoAutomatico onMinutos={onMinutos} />
       <CambiarContrasena />
       <NuevaRecuperacion />
+      <RegistroErrores />
     </div>
   );
 }
@@ -156,5 +158,28 @@ function NuevaRecuperacion() {
         </>
       )}
     </form>
+  );
+}
+
+function RegistroErrores() {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <section className="panel">
+      <h3>Registro de errores</h3>
+      <p className="nota">
+        La app guarda los errores en un archivo para poder diagnosticarlos. No incluye datos de pacientes. Si pedís
+        ayuda por un problema, podés enviar ese archivo.
+      </p>
+      <div>
+        <button
+          onClick={() =>
+            invoke("abrir_carpeta_registros").catch((e) => setError(textoError(e, "abrir carpeta de registros")))
+          }
+        >
+          Abrir carpeta de registros
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </section>
   );
 }

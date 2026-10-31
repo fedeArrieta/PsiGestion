@@ -4,6 +4,7 @@ import { ESTADOS_TURNO } from "../tipos";
 import { turnosSuperpuestos } from "./logica";
 import { horaTexto } from "../fechas";
 import { leerMonto, pesos } from "../formato";
+import { textoError } from "../errores";
 
 export interface ResultadoModal {
   paciente_id: number | null;
@@ -92,7 +93,7 @@ export default function TurnoModal(props: Props) {
         pagado,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(textoError(err, "guardar turno"));
       setGuardando(false);
     }
   }
@@ -105,7 +106,7 @@ export default function TurnoModal(props: Props) {
     try {
       await props.onEliminar(turno.id);
     } catch (err) {
-      setError(String(err));
+      setError(textoError(err, "eliminar turno"));
       setGuardando(false);
     }
   }
