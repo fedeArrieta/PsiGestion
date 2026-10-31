@@ -21,7 +21,7 @@ Prioridades:
 | 5 | Endurecer la seguridad de Tauri (CSP y permisos) | Alta | Parcial |
 | 6 | Exportación de datos (portabilidad) | Media | No existe |
 | 7 | Registro de errores (logs) | Media | No existe |
-| 8 | Actualizaciones automáticas | Media | No existe |
+| 8 | Aviso de actualización y actualizaciones automáticas | Media | No existe |
 | 9 | Firma digital del instalador | Media | No existe |
 | 10 | Precisión de los montos (sin errores de redondeo) | Media | Parcial |
 | 11 | Borrado seguro y papelera | Media | Parcial |
@@ -103,13 +103,29 @@ Hoy los errores solo se muestran en pantalla y se pierden al cerrar.
 - Botón "Abrir carpeta de logs" para poder enviarlos al pedir soporte.
 - Mensajes de error en pantalla en lenguaje simple, sin texto técnico.
 
-### 8. Actualizaciones automáticas (Media)
+### 8. Aviso de actualización y actualizaciones automáticas (Media)
 
-Hoy cada versión nueva se descarga a mano desde GitHub Actions.
+Hoy cada versión nueva se descarga a mano desde GitHub Actions, y no hay forma de enterarse desde la app de que salió una.
 
-- Publicar versiones como *Releases* de GitHub y usar `tauri-plugin-updater` para avisar que hay una nueva y aplicarla con un clic.
-- Hacer una copia de seguridad automática antes de actualizar.
+**Aviso de actualización del sistema**
+
+- Al abrir la app (y cada 24 horas si queda abierta) consultar si hay una versión nueva publicada en los *Releases* de GitHub.
+- Si la hay, mostrar un aviso discreto dentro de la app (barra o tarjeta, no una ventana que bloquee) con la versión nueva, la actual y un resumen de las novedades en español.
+- Opciones del aviso: "Actualizar ahora", "Recordarme más tarde" y "Omitir esta versión".
+- No interrumpir: el aviso no aparece encima de un formulario abierto (por ejemplo, mientras se carga un turno) y nunca cierra la app sin confirmación.
+- Si no hay internet o la consulta falla, no mostrar ningún error: la app sigue funcionando igual y vuelve a intentar más tarde.
+- La consulta no envía datos de pacientes ni de uso; solo pide el número de la última versión.
+- En la configuración, opción para activar o desactivar la búsqueda automática y botón "Buscar actualizaciones".
+- Mostrar la versión instalada en la app (ver punto 16).
+
+**Instalación de la actualización**
+
+- Usar `tauri-plugin-updater` para descargar e instalar con un clic, verificando la firma del paquete de actualización (Tauri lo exige).
+- Hacer una copia de seguridad automática (punto 1) antes de instalar.
 - Las migraciones deben aplicarse solas al abrir la versión nueva (ya ocurre).
+- Después de actualizar, mostrar "Novedades" una vez.
+
+**Criterio de aceptación**: con una versión anterior instalada y una nueva publicada, al abrir la app aparece el aviso; al elegir "Actualizar ahora" se instala, se reabre en la versión nueva y los datos siguen intactos.
 
 ### 9. Firma digital del instalador (Media)
 
@@ -174,5 +190,5 @@ Ya cubierto: la app no necesita internet. Solo hay que preservarlo al sumar func
 3. Contraseña (3) y cifrado (4), juntos, porque la clave del cifrado sale de la contraseña.
 4. Logs (7) y exportación (6).
 5. Precisión de montos (10) y papelera (11).
-6. Versionado (16), actualizaciones (8) y firma (9).
+6. Versionado (16), aviso de actualización y actualizaciones (8), y firma (9). El aviso y el versionado van juntos, porque el aviso necesita saber qué versión está instalada.
 7. El resto según se necesite.
