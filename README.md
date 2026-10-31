@@ -25,6 +25,8 @@ npm run tauri dev
 
 Para generar el instalador localmente: `npm run tauri build`.
 
+Para correr las pruebas: `npm test`.
+
 ## Plan
 
 1. Base del proyecto: estructura, base de datos e instalador automático.

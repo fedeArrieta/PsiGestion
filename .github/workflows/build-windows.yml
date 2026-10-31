@@ -25,6 +25,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Pruebas
+        run: npm test
+
       - name: Compilar instalador
         run: npm run tauri build
 
