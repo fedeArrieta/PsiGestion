@@ -12,6 +12,13 @@ import type {
 export interface Db {
   select<T>(sql: string, params?: unknown[]): Promise<T>;
   execute(sql: string, params?: unknown[]): Promise<{ rowsAffected: number; lastInsertId?: number }>;
+  /** Ejecuta todas las sentencias o ninguna. */
+  transaccion(sentencias: Sentencia[]): Promise<void>;
+}
+
+export interface Sentencia {
+  sql: string;
+  params?: unknown[];
 }
 
 export interface DatosPaciente {
@@ -138,14 +145,16 @@ export function listarPacientesConResumen(db: Db, incluirInactivos = false): Pro
  */
 export async function actualizarPaciente(db: Db, id: number, datos: DatosPaciente, ahora: string): Promise<void> {
   const { nombre, monto } = validarPaciente(datos);
-  await db.execute(
-    "UPDATE pacientes SET nombre = $1, telefono = $2, email = $3, monto_sesion = $4, notas = $5 WHERE id = $6",
-    [nombre, vacioANull(datos.telefono), vacioANull(datos.email), monto, vacioANull(datos.notas), id],
-  );
-  await db.execute(
-    "UPDATE turnos SET monto = $1 WHERE paciente_id = $2 AND estado = 'programado' AND inicio >= $3",
-    [monto, id, ahora],
-  );
+  await db.transaccion([
+    {
+      sql: "UPDATE pacientes SET nombre = $1, telefono = $2, email = $3, monto_sesion = $4, notas = $5 WHERE id = $6",
+      params: [nombre, vacioANull(datos.telefono), vacioANull(datos.email), monto, vacioANull(datos.notas), id],
+    },
+    {
+      sql: "UPDATE turnos SET monto = $1 WHERE paciente_id = $2 AND estado = 'programado' AND inicio >= $3",
+      params: [monto, id, ahora],
+    },
+  ]);
 }
 
 /** Baja lógica: el paciente deja de aparecer en la agenda pero se conserva su historial. */
@@ -280,4 +289,30 @@ export async function resumenMes(db: Db, mes: string): Promise<ResumenMes> {
     [mes],
   );
   return { ...t, gastos: g.total, precio_promedio: p.promedio ?? 0 };
+}
+
+// ---------- Configuración y cuidado de los datos ----------
+
+export async function leerConfiguracion(db: Db): Promise<Record<string, string>> {
+  const filas = await db.select<{ clave: string; valor: string | null }[]>("SELECT clave, valor FROM configuracion");
+  return Object.fromEntries(filas.filter((f) => f.valor != null).map((f) => [f.clave, f.valor as string]));
+}
+
+export async function guardarConfiguracion(db: Db, clave: string, valor: string | null): Promise<void> {
+  await db.execute(
+    "INSERT INTO configuracion (clave, valor) VALUES ($1, $2) ON CONFLICT (clave) DO UPDATE SET valor = excluded.valor",
+    [clave, valor],
+  );
+}
+
+/** Copia consistente de toda la base en un archivo nuevo (que no debe existir). */
+export async function copiarBaseA(db: Db, ruta: string): Promise<void> {
+  await db.execute("VACUUM INTO $1", [ruta]);
+}
+
+/** Revisa que el archivo de la base no esté dañado. Devuelve los problemas encontrados (vacío si está bien). */
+export async function verificarIntegridad(db: Db): Promise<string[]> {
+  const filas = await db.select<Record<string, string>[]>("PRAGMA quick_check");
+  const mensajes = filas.map((f) => Object.values(f)[0]);
+  return mensajes.length === 1 && mensajes[0] === "ok" ? [] : mensajes;
 }

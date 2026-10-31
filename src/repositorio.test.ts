@@ -1,5 +1,7 @@
 /// <reference types="node" />
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
@@ -23,6 +25,10 @@ import {
   listarTurnosDePaciente,
   marcarPagado,
   saldarPaciente,
+  copiarBaseA,
+  guardarConfiguracion,
+  leerConfiguracion,
+  verificarIntegridad,
   type Db,
 } from "./repositorio";
 
@@ -44,6 +50,16 @@ function crearDbDePrueba(): Db {
     async execute(sql: string, params: unknown[] = []) {
       const r = preparar(sql).run(...(params as never[]));
       return { rowsAffected: Number(r.changes), lastInsertId: Number(r.lastInsertRowid) };
+    },
+    async transaccion(sentencias) {
+      sqlite.exec("BEGIN");
+      try {
+        for (const s of sentencias) preparar(s.sql).run(...((s.params ?? []) as never[]));
+        sqlite.exec("COMMIT");
+      } catch (e) {
+        sqlite.exec("ROLLBACK");
+        throw e;
+      }
     },
   };
 }
@@ -248,5 +264,52 @@ describe("repositorio", () => {
       expect(r).toMatchObject({ facturado: 0, gastos: 0, precio_promedio: 25000 });
     });
   });
-});
 
+  describe("cuidado de los datos", () => {
+    it("rechaza un turno de un paciente que no existe", async () => {
+      await expect(
+        db.execute("INSERT INTO turnos (paciente_id, inicio) VALUES ($1, $2)", [999, "2026-11-02T10:00"]),
+      ).rejects.toThrow(/FOREIGN KEY/);
+    });
+
+    it("una transacción con un error no guarda nada", async () => {
+      const id = await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+      await expect(
+        db.transaccion([
+          { sql: "UPDATE pacientes SET monto_sesion = $1 WHERE id = $2", params: [500, id] },
+          { sql: "UPDATE tabla_que_no_existe SET x = 1" },
+        ]),
+      ).rejects.toThrow();
+      const [p] = await listarPacientes(db);
+      expect(p.monto_sesion).toBe(100);
+    });
+
+    it("guarda y lee la configuración", async () => {
+      expect(await leerConfiguracion(db)).toEqual({});
+      await guardarConfiguracion(db, "copias_carpeta", "C:\\Copias");
+      await guardarConfiguracion(db, "copias_carpeta", "D:\\Otra");
+      await guardarConfiguracion(db, "copias_conservar", "10");
+      expect(await leerConfiguracion(db)).toEqual({ copias_carpeta: "D:\\Otra", copias_conservar: "10" });
+    });
+
+    it("la base recién creada pasa el chequeo de integridad", async () => {
+      expect(await verificarIntegridad(db)).toEqual([]);
+    });
+
+    it("copia la base completa a un archivo", async () => {
+      await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+      const carpeta = mkdtempSync(join(tmpdir(), "psigestion-"));
+      try {
+        const ruta = join(carpeta, "psigestion-manual-2026-10-31_20-00-00.db");
+        await copiarBaseA(db, ruta);
+        const copia = new DatabaseSync(ruta);
+        const filas = copia.prepare("SELECT nombre FROM pacientes").all();
+        copia.close();
+        expect(filas).toEqual([{ nombre: "Ana" }]);
+        await expect(copiarBaseA(db, ruta)).rejects.toThrow();
+      } finally {
+        rmSync(carpeta, { recursive: true, force: true });
+      }
+    });
+  });
+});

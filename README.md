@@ -2,6 +2,10 @@
 
 Aplicación de escritorio para Windows que ayuda a un psicólogo a gestionar su agenda de turnos, pacientes y finanzas mensuales. Todos los datos se guardan solo en la computadora, en una base SQLite local.
 
+## Copias de seguridad
+
+La app hace una copia automática de la base al abrirse (como máximo una vez por día) en `Documentos\PsiGestion\Copias`, y conserva las últimas 30. Desde la sección **Copias de seguridad** se puede cambiar la carpeta (conviene una sincronizada con la nube o un disco externo), hacer una copia manual y restaurar cualquier copia. Antes de restaurar se guarda una copia del estado actual.
+
 ## Tecnología
 
 - [Tauri 2](https://tauri.app) para la app de escritorio (instalador liviano para Windows).
