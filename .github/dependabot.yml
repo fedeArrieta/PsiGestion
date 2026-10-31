@@ -12,6 +12,11 @@ updates:
     directory: /src-tauri
     schedule:
       interval: monthly
+    ignore:
+      # sqlx tiene que ser la misma versión que usa tauri-plugin-sql (hoy 0.8):
+      # se actualiza cuando lo haga el plugin, no antes.
+      - dependency-name: sqlx
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       cargo:
         patterns: ["*"]
