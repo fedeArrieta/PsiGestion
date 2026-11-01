@@ -2,6 +2,12 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.2.1] - 2026-11-01
+
+### Mejoras
+
+- Primera actualización automática: sirve para comprobar que el aviso de actualización funciona de punta a punta.
+
 ## [0.2.0] - 2026-11-01
 
 ### Nuevo
