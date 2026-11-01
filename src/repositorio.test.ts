@@ -26,6 +26,11 @@ import {
   marcarPagado,
   saldarPaciente,
   copiarBaseA,
+  borrarDePapelera,
+  listarHistorial,
+  listarPapelera,
+  restaurarDePapelera,
+  vaciarPapeleraVencida,
   datosParaExportar,
   guardarConfiguracion,
   leerConfiguracion,
@@ -252,7 +257,7 @@ describe("repositorio", () => {
         programado: 25000,
         sesiones_programadas: 1,
         gastos: 100000,
-        precio_promedio: (25000 + 15000 + 25000) / 3,
+        precio_promedio: expect.closeTo((25000 + 15000 + 25000) / 3, 6),
       });
     });
 
@@ -333,5 +338,90 @@ describe("repositorio", () => {
     expect(octubre.turnos.map((t) => t.inicio)).toEqual(["2026-10-31T09:00"]);
     expect(octubre.gastos.map((g) => g.descripcion)).toEqual(["Alquiler"]);
     await expect(datosParaExportar(db, "octubre")).rejects.toThrow();
+  });
+
+  it("guarda los montos en centavos y suma sin errores de redondeo", async () => {
+    // 0,1 + 0,2 en números de punto flotante da 0,30000000000000004.
+    await crearGasto(db, { mes: "2026-11", descripcion: "A", monto: 0.1 });
+    await crearGasto(db, { mes: "2026-11", descripcion: "B", monto: 0.2 });
+    for (let i = 0; i < 1000; i++) await crearGasto(db, { mes: "2026-11", descripcion: `C${i}`, monto: 0.01 });
+    expect((await resumenMes(db, "2026-11")).gastos).toBe(10.3);
+    const [crudo] = await db.select<{ monto: number }[]>("SELECT monto FROM gastos WHERE descripcion = 'B'");
+    expect(crudo.monto).toBe(20);
+    expect((await listarGastos(db, "2026-11")).find((g) => g.descripcion === "B")?.monto).toBe(0.2);
+  });
+
+  it("la migración pasa a centavos los montos que ya estaban cargados", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    const archivos = readdirSync(CARPETA_MIGRACIONES).sort();
+    for (const a of archivos.slice(0, 3)) sqlite.exec(readFileSync(new URL(a, CARPETA_MIGRACIONES), "utf8"));
+    sqlite.exec("INSERT INTO pacientes (nombre, monto_sesion) VALUES ('Ana', 25000.5)");
+    sqlite.exec("INSERT INTO turnos (paciente_id, inicio, monto) VALUES (1, '2026-11-02T10:00', 25000.5)");
+    sqlite.exec("INSERT INTO gastos (mes, descripcion, monto) VALUES ('2026-11', 'Luz', 1234.56)");
+    sqlite.exec("INSERT INTO objetivos (mes, monto) VALUES ('2026-11', 500000)");
+    sqlite.exec(readFileSync(new URL(archivos[3], CARPETA_MIGRACIONES), "utf8"));
+    const fila = (sql: string) => Object.values(sqlite.prepare(sql).get() as object)[0];
+    expect(fila("SELECT monto_sesion FROM pacientes")).toBe(2500050);
+    expect(fila("SELECT monto FROM turnos")).toBe(2500050);
+    expect(fila("SELECT monto FROM gastos")).toBe(123456);
+    expect(fila("SELECT monto FROM objetivos")).toBe(50000000);
+  });
+
+  describe("papelera e historial", () => {
+    it("un turno eliminado va a la papelera y se puede restaurar igual que estaba", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 25000 });
+      const turno = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-02T10:00", duracion_min: 50, notas: "x" });
+      await marcarPagado(db, turno, true);
+      const enPapelera = await eliminarTurno(db, turno);
+      expect(await listarTurnosDePaciente(db, ana)).toEqual([]);
+      const papelera = await listarPapelera(db);
+      expect(papelera).toHaveLength(1);
+      expect(papelera[0]).toMatchObject({ id: enPapelera, tipo: "turno", descripcion: "Turno de Ana (2026-11-02T10:00)" });
+
+      await restaurarDePapelera(db, enPapelera!);
+      const [t] = await listarTurnosDePaciente(db, ana);
+      expect(t).toMatchObject({ id: turno, monto: 25000, pagado: 1, notas: "x", duracion_min: 50 });
+      expect(await listarPapelera(db)).toEqual([]);
+      const acciones = (await listarHistorial(db, ana)).map((h) => h.accion);
+      expect(acciones.filter((a) => a === "creado")).toHaveLength(1);
+      expect(acciones[0]).toBe("restaurado");
+      await expect(restaurarDePapelera(db, enPapelera!)).rejects.toThrow(/ya no está/);
+    });
+
+    it("un gasto eliminado se puede restaurar o borrar definitivamente", async () => {
+      const id = await crearGasto(db, { mes: "2026-11", descripcion: "Luz", monto: 1234.5, fijo: true });
+      const enPapelera = await eliminarGasto(db, id);
+      expect(await listarGastos(db, "2026-11")).toEqual([]);
+      await restaurarDePapelera(db, enPapelera!);
+      expect(await listarGastos(db, "2026-11")).toMatchObject([{ id, descripcion: "Luz", monto: 1234.5, fijo: 1 }]);
+
+      const otra = await eliminarGasto(db, id);
+      await borrarDePapelera(db, otra!);
+      expect(await listarPapelera(db)).toEqual([]);
+    });
+
+    it("vacía lo que lleva más de 30 días", async () => {
+      const id = await crearGasto(db, { mes: "2026-11", descripcion: "Luz", monto: 10 });
+      await eliminarGasto(db, id);
+      await db.execute("UPDATE papelera SET eliminado_en = '2026-10-01 10:00:00'");
+      expect(await vaciarPapeleraVencida(db, "2026-10-25T10:00")).toBe(0);
+      expect(await vaciarPapeleraVencida(db, "2026-11-05T10:00")).toBe(1);
+    });
+
+    it("registra los cambios de turnos y pagos", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+      const turno = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-02T10:00", duracion_min: 50 });
+      await actualizarTurno(db, turno, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50, estado: "realizado" });
+      await marcarPagado(db, turno, true);
+      await actualizarPaciente(db, ana, { nombre: "Ana", monto_sesion: 200 }, "2026-01-01T00:00");
+      await eliminarTurno(db, turno);
+      const acciones = (await listarHistorial(db, ana)).map((h) => h.accion).reverse();
+      // Estado y fecha cambian en el mismo UPDATE: SQLite no garantiza el orden de esos dos.
+      expect(acciones[0]).toBe("creado");
+      expect(acciones.slice(1, 3).sort()).toEqual(["estado", "reprogramado"]);
+      expect(acciones.slice(3)).toEqual(["pagado", "eliminado"]);
+      const [ultimo] = await listarHistorial(db, null, 1);
+      expect(ultimo).toMatchObject({ paciente_nombre: "Ana", detalle: "Turno del 2026-11-03T10:00 eliminado" });
+    });
   });
 });

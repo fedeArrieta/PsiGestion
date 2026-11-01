@@ -41,10 +41,26 @@ export interface DatosTurno {
 
 const vacioANull = (s?: string | null) => (s && s.trim() ? s.trim() : null);
 
-export function listarPacientes(db: Db): Promise<Paciente[]> {
-  return db.select<Paciente[]>(
-    "SELECT * FROM pacientes WHERE activo = 1 ORDER BY nombre COLLATE NOCASE",
-  );
+// En la base los montos se guardan en centavos enteros (migración 0004), así las
+// sumas son exactas. Hacia afuera de este archivo todo se maneja en pesos.
+
+/** Pesos → centavos enteros. */
+export const aCentavos = (pesos: number) => Math.round((pesos + Number.EPSILON) * 100);
+
+/** Pasa a pesos los campos de montos de cada fila. */
+function enPesos<T>(filas: T[], campos: (keyof T)[]): T[] {
+  for (const f of filas) {
+    for (const c of campos) {
+      const v = f[c] as unknown;
+      if (typeof v === "number") (f[c] as unknown) = v / 100;
+    }
+  }
+  return filas;
+}
+
+export async function listarPacientes(db: Db): Promise<Paciente[]> {
+  const filas = await db.select<Paciente[]>("SELECT * FROM pacientes WHERE activo = 1 ORDER BY nombre COLLATE NOCASE");
+  return enPesos(filas, ["monto_sesion"]);
 }
 
 function validarPaciente(datos: DatosPaciente): { nombre: string; monto: number } {
@@ -52,7 +68,7 @@ function validarPaciente(datos: DatosPaciente): { nombre: string; monto: number 
   if (!nombre) throw new Error("El nombre del paciente es obligatorio.");
   const monto = datos.monto_sesion ?? 0;
   if (!(monto >= 0)) throw new Error("El monto por sesión no es válido.");
-  return { nombre, monto };
+  return { nombre, monto: aCentavos(monto) };
 }
 
 export async function crearPaciente(db: Db, datos: DatosPaciente): Promise<number> {
@@ -66,14 +82,15 @@ export async function crearPaciente(db: Db, datos: DatosPaciente): Promise<numbe
 }
 
 /** Turnos con inicio en [desde, hasta), ambos en formato AAAA-MM-DDTHH:MM. */
-export function listarTurnos(db: Db, desde: string, hasta: string): Promise<TurnoConPaciente[]> {
-  return db.select<TurnoConPaciente[]>(
+export async function listarTurnos(db: Db, desde: string, hasta: string): Promise<TurnoConPaciente[]> {
+  const filas = await db.select<TurnoConPaciente[]>(
     `SELECT t.*, p.nombre AS paciente_nombre
        FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
       WHERE t.inicio >= $1 AND t.inicio < $2
       ORDER BY t.inicio, t.id`,
     [desde, hasta],
   );
+  return enPesos(filas, ["monto"]);
 }
 
 function validarTurno(datos: DatosTurno) {
@@ -116,16 +133,31 @@ export async function actualizarTurno(db: Db, id: number, datos: DatosTurno): Pr
   );
 }
 
-export async function eliminarTurno(db: Db, id: number): Promise<void> {
-  await db.execute("DELETE FROM turnos WHERE id = $1", [id]);
+/** Manda el turno a la papelera. Devuelve el id en la papelera, para poder deshacer. */
+export async function eliminarTurno(db: Db, id: number): Promise<number | null> {
+  await db.transaccion([
+    {
+      sql: `INSERT INTO papelera (tipo, registro_id, datos, descripcion)
+            SELECT 'turno', t.id,
+                   json_object('id', t.id, 'paciente_id', t.paciente_id, 'inicio', t.inicio,
+                               'duracion_min', t.duracion_min, 'estado', t.estado, 'monto', t.monto,
+                               'pagado', t.pagado, 'notas', t.notas, 'creado_en', t.creado_en),
+                   'Turno de ' || p.nombre || ' (' || t.inicio || ')'
+              FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
+             WHERE t.id = $1`,
+      params: [id],
+    },
+    { sql: "DELETE FROM turnos WHERE id = $1", params: [id] },
+  ]);
+  return ultimoEnPapelera(db, "turno", id);
 }
 
 /**
  * Pacientes con sus totales. "Saldo pendiente" es la suma de las sesiones
  * realizadas que todavía no se marcaron como pagadas.
  */
-export function listarPacientesConResumen(db: Db, incluirInactivos = false): Promise<PacienteConResumen[]> {
-  return db.select<PacienteConResumen[]>(
+export async function listarPacientesConResumen(db: Db, incluirInactivos = false): Promise<PacienteConResumen[]> {
+  const filas = await db.select<PacienteConResumen[]>(
     `SELECT p.*,
             COALESCE(SUM(t.estado = 'realizado'), 0) AS sesiones_realizadas,
             COALESCE(SUM(CASE WHEN t.estado = 'realizado' AND t.pagado = 0 THEN t.monto END), 0) AS saldo_pendiente,
@@ -136,6 +168,7 @@ export function listarPacientesConResumen(db: Db, incluirInactivos = false): Pro
       ORDER BY p.activo DESC, p.nombre COLLATE NOCASE`,
     [incluirInactivos ? 1 : 0],
   );
+  return enPesos(filas, ["monto_sesion", "saldo_pendiente"]);
 }
 
 /**
@@ -162,11 +195,12 @@ export async function cambiarActivoPaciente(db: Db, id: number, activo: boolean)
   await db.execute("UPDATE pacientes SET activo = $1 WHERE id = $2", [activo ? 1 : 0, id]);
 }
 
-export function listarTurnosDePaciente(db: Db, pacienteId: number): Promise<Turno[]> {
-  return db.select<Turno[]>(
+export async function listarTurnosDePaciente(db: Db, pacienteId: number): Promise<Turno[]> {
+  const filas = await db.select<Turno[]>(
     "SELECT * FROM turnos WHERE paciente_id = $1 ORDER BY inicio DESC, id DESC",
     [pacienteId],
   );
+  return enPesos(filas, ["monto"]);
 }
 
 export async function marcarPagado(db: Db, turnoId: number, pagado: boolean): Promise<void> {
@@ -201,8 +235,11 @@ function validarGasto(datos: DatosGasto): string {
   return descripcion;
 }
 
-export function listarGastos(db: Db, mes: string): Promise<Gasto[]> {
-  return db.select<Gasto[]>("SELECT * FROM gastos WHERE mes = $1 ORDER BY fijo DESC, monto DESC, id", [mes]);
+export async function listarGastos(db: Db, mes: string): Promise<Gasto[]> {
+  const filas = await db.select<Gasto[]>("SELECT * FROM gastos WHERE mes = $1 ORDER BY fijo DESC, monto DESC, id", [
+    mes,
+  ]);
+  return enPesos(filas, ["monto"]);
 }
 
 export async function crearGasto(db: Db, datos: DatosGasto): Promise<number> {
@@ -210,7 +247,7 @@ export async function crearGasto(db: Db, datos: DatosGasto): Promise<number> {
   const r = await db.execute("INSERT INTO gastos (mes, descripcion, monto, fijo) VALUES ($1, $2, $3, $4)", [
     datos.mes,
     descripcion,
-    datos.monto,
+    aCentavos(datos.monto),
     datos.fijo ? 1 : 0,
   ]);
   if (r.lastInsertId == null) throw new Error("No se pudo guardar el gasto.");
@@ -222,14 +259,27 @@ export async function actualizarGasto(db: Db, id: number, datos: DatosGasto): Pr
   await db.execute("UPDATE gastos SET mes = $1, descripcion = $2, monto = $3, fijo = $4 WHERE id = $5", [
     datos.mes,
     descripcion,
-    datos.monto,
+    aCentavos(datos.monto),
     datos.fijo ? 1 : 0,
     id,
   ]);
 }
 
-export async function eliminarGasto(db: Db, id: number): Promise<void> {
-  await db.execute("DELETE FROM gastos WHERE id = $1", [id]);
+/** Manda el gasto a la papelera. Devuelve el id en la papelera, para poder deshacer. */
+export async function eliminarGasto(db: Db, id: number): Promise<number | null> {
+  await db.transaccion([
+    {
+      sql: `INSERT INTO papelera (tipo, registro_id, datos, descripcion)
+            SELECT 'gasto', id,
+                   json_object('id', id, 'mes', mes, 'descripcion', descripcion, 'monto', monto,
+                               'fijo', fijo, 'creado_en', creado_en),
+                   'Gasto "' || descripcion || '" (' || mes || ')'
+              FROM gastos WHERE id = $1`,
+      params: [id],
+    },
+    { sql: "DELETE FROM gastos WHERE id = $1", params: [id] },
+  ]);
+  return ultimoEnPapelera(db, "gasto", id);
 }
 
 /** Copia los gastos fijos de un mes a otro, salvo los que ya existan con la misma descripción. */
@@ -250,7 +300,7 @@ export async function obtenerObjetivo(db: Db, mes: string): Promise<number | nul
     "SELECT monto FROM objetivos WHERE mes <= $1 ORDER BY mes DESC LIMIT 1",
     [mes],
   );
-  return filas.length ? filas[0].monto : null;
+  return filas.length ? filas[0].monto / 100 : null;
 }
 
 export async function guardarObjetivo(db: Db, mes: string, monto: number): Promise<void> {
@@ -258,7 +308,7 @@ export async function guardarObjetivo(db: Db, mes: string, monto: number): Promi
   if (!(monto >= 0)) throw new Error("El objetivo no es válido.");
   await db.execute(
     "INSERT INTO objetivos (mes, monto) VALUES ($1, $2) ON CONFLICT (mes) DO UPDATE SET monto = excluded.monto",
-    [mes, monto],
+    [mes, aCentavos(monto)],
   );
 }
 
@@ -288,7 +338,14 @@ export async function resumenMes(db: Db, mes: string): Promise<ResumenMes> {
      ) AS promedio`,
     [mes],
   );
-  return { ...t, gastos: g.total, precio_promedio: p.promedio ?? 0 };
+  return {
+    ...t,
+    facturado: t.facturado / 100,
+    cobrado: t.cobrado / 100,
+    programado: t.programado / 100,
+    gastos: g.total / 100,
+    precio_promedio: (p.promedio ?? 0) / 100,
+  };
 }
 
 // ---------- Configuración y cuidado de los datos ----------
@@ -339,5 +396,100 @@ export async function datosParaExportar(db: Db, mes: string | null): Promise<Dat
     ),
     db.select<Gasto[]>("SELECT * FROM gastos WHERE $1 IS NULL OR mes = $1 ORDER BY mes, id", [mes]),
   ]);
-  return { pacientes, turnos, gastos };
+  return {
+    pacientes: enPesos(pacientes, ["monto_sesion"]),
+    turnos: enPesos(turnos, ["monto"]),
+    gastos: enPesos(gastos, ["monto"]),
+  };
+}
+
+// ---------- Papelera e historial ----------
+
+export interface ElementoPapelera {
+  id: number;
+  tipo: "turno" | "gasto";
+  descripcion: string;
+  eliminado_en: string;
+}
+
+export interface CambioHistorial {
+  id: number;
+  fecha: string;
+  turno_id: number;
+  paciente_id: number;
+  paciente_nombre: string;
+  accion: string;
+  detalle: string;
+}
+
+/** Días que se conservan los elementos de la papelera. */
+export const DIAS_PAPELERA = 30;
+
+async function ultimoEnPapelera(db: Db, tipo: string, registroId: number): Promise<number | null> {
+  const filas = await db.select<{ id: number }[]>(
+    "SELECT id FROM papelera WHERE tipo = $1 AND registro_id = $2 ORDER BY id DESC LIMIT 1",
+    [tipo, registroId],
+  );
+  return filas.length ? filas[0].id : null;
+}
+
+export function listarPapelera(db: Db): Promise<ElementoPapelera[]> {
+  return db.select<ElementoPapelera[]>(
+    "SELECT id, tipo, descripcion, eliminado_en FROM papelera ORDER BY eliminado_en DESC, id DESC",
+  );
+}
+
+/** Vuelve a poner el turno o gasto donde estaba, con el mismo id. */
+export async function restaurarDePapelera(db: Db, id: number): Promise<void> {
+  const [elemento] = await db.select<{ tipo: string }[]>("SELECT tipo FROM papelera WHERE id = $1", [id]);
+  if (!elemento) throw new Error("Ese elemento ya no está en la papelera.");
+  const insertar =
+    elemento.tipo === "turno"
+      ? `INSERT INTO turnos (id, paciente_id, inicio, duracion_min, estado, monto, pagado, notas, creado_en)
+         SELECT json_extract(datos, '$.id'), json_extract(datos, '$.paciente_id'), json_extract(datos, '$.inicio'),
+                json_extract(datos, '$.duracion_min'), json_extract(datos, '$.estado'), json_extract(datos, '$.monto'),
+                json_extract(datos, '$.pagado'), json_extract(datos, '$.notas'), json_extract(datos, '$.creado_en')
+           FROM papelera WHERE id = $1`
+      : `INSERT INTO gastos (id, mes, descripcion, monto, fijo, creado_en)
+         SELECT json_extract(datos, '$.id'), json_extract(datos, '$.mes'), json_extract(datos, '$.descripcion'),
+                json_extract(datos, '$.monto'), json_extract(datos, '$.fijo'), json_extract(datos, '$.creado_en')
+           FROM papelera WHERE id = $1`;
+  const pasos = [{ sql: insertar, params: [id] as unknown[] }];
+  if (elemento.tipo === "turno") {
+    // El trigger de alta registra "creado"; para el historial es una restauración.
+    pasos.push({
+      sql: `UPDATE historial SET accion = 'restaurado', detalle = REPLACE(detalle, 'Turno del', 'Turno restaurado del')
+             WHERE id = (SELECT MAX(id) FROM historial
+                          WHERE turno_id = (SELECT json_extract(datos, '$.id') FROM papelera WHERE id = $1)
+                            AND accion = 'creado')`,
+      params: [id],
+    });
+  }
+  pasos.push({ sql: "DELETE FROM papelera WHERE id = $1", params: [id] });
+  await db.transaccion(pasos);
+}
+
+export async function borrarDePapelera(db: Db, id: number): Promise<void> {
+  await db.execute("DELETE FROM papelera WHERE id = $1", [id]);
+}
+
+/** Borra definitivamente lo que lleva más de 30 días en la papelera. */
+export async function vaciarPapeleraVencida(db: Db, ahora: string): Promise<number> {
+  const r = await db.execute("DELETE FROM papelera WHERE eliminado_en < datetime($1, $2)", [
+    ahora.replace("T", " "),
+    `-${DIAS_PAPELERA} days`,
+  ]);
+  return r.rowsAffected;
+}
+
+/** Últimos cambios de turnos y pagos, de un paciente o de todos. */
+export function listarHistorial(db: Db, pacienteId: number | null, limite = 200): Promise<CambioHistorial[]> {
+  return db.select<CambioHistorial[]>(
+    `SELECT h.*, p.nombre AS paciente_nombre
+       FROM historial h JOIN pacientes p ON p.id = h.paciente_id
+      WHERE $1 IS NULL OR h.paciente_id = $1
+      ORDER BY h.fecha DESC, h.id DESC
+      LIMIT $2`,
+    [pacienteId, limite],
+  );
 }

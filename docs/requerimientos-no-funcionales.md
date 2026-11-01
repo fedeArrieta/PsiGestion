@@ -23,8 +23,8 @@ Prioridades:
 | 7 | Registro de errores (logs) | Media | Hecho (paso 4) |
 | 8 | Aviso de actualización y actualizaciones automáticas | Media | No existe |
 | 9 | Firma digital del instalador | Media | No existe |
-| 10 | Precisión de los montos (sin errores de redondeo) | Media | Parcial |
-| 11 | Borrado seguro y papelera | Media | Parcial |
+| 10 | Precisión de los montos (sin errores de redondeo) | Media | Hecho (paso 5) |
+| 11 | Borrado seguro y papelera | Media | Hecho (paso 5) |
 | 12 | Rendimiento con varios años de datos | Media | Cubierto por ahora |
 | 13 | Calidad: pruebas y CI | Media | Cubierto en parte |
 | 14 | Usabilidad y atajos de teclado | Baja | Parcial |
@@ -140,18 +140,18 @@ Sin firma, Windows SmartScreen muestra "Windows protegió su PC" al instalar. Fi
 
 ### 10. Precisión de los montos (Media)
 
-Los montos se guardan como `REAL` (número con decimales binarios), lo que puede producir diferencias de centavos al sumar muchos valores.
+**Hecho (paso 5).** Los montos (tarifas, turnos, gastos y objetivo mensual) se guardan como centavos enteros. La migración 0004 convierte los datos existentes al abrir la versión nueva. La app sigue mostrando y pidiendo pesos: la conversión se hace en un solo lugar (`src/repositorio.ts`), así que las sumas se hacen sobre enteros y no acumulan errores de redondeo.
 
-- Guardar los montos en centavos como `INTEGER` (con una migración nueva) o redondear siempre a 2 decimales al calcular.
-- Pruebas que verifiquen totales con muchos montos.
+- Pruebas: sumar 0,1 + 0,2 y mil montos de 0,01 da exactamente el total esperado, y la migración convierte bien una base con datos anteriores.
 
 ### 11. Borrado seguro y papelera (Media)
 
-Los turnos y gastos eliminados se borran definitivamente (`DELETE`).
+**Hecho (paso 5).**
 
-- Papelera o "deshacer" por unos segundos después de eliminar.
-- Registro de cambios (auditoría) básico para turnos y pagos: qué cambió y cuándo. Útil si hay que reconstruir qué se cobró.
-- Definir un plazo de conservación de los datos de pacientes dados de baja (la historia clínica se conserva al menos 10 años según la Ley 26.529).
+- Al eliminar un turno o un gasto aparece una barra con "Deshacer" durante unos segundos.
+- Lo eliminado va a la sección "Papelera e historial", donde se puede restaurar o borrar definitivamente. Se vacía sola a los 30 días.
+- Historial de cambios de los turnos: creación, cambio de estado, pago, cambio de monto, reprogramación y eliminación, con fecha y hora. Se registra automáticamente en la base (triggers de SQLite), sin depender de la pantalla.
+- Conservación de pacientes dados de baja: la app no borra pacientes ni su historia automáticamente. La Ley 26.529 exige conservar la historia clínica al menos 10 años, así que los pacientes inactivos quedan guardados (y en las copias de seguridad) hasta que la profesional decida otra cosa.
 
 ### 12. Rendimiento (Media)
 
@@ -196,6 +196,6 @@ Ya cubierto: la app no necesita internet. Solo hay que preservarlo al sumar func
 2. ~~CSP y permisos (5)~~: hecho.
 3. ~~Contraseña (3) y cifrado (4)~~: hecho.
 4. ~~Logs (7) y exportación (6)~~: hecho.
-5. Precisión de montos (10) y papelera (11).
+5. ~~Precisión de montos (10) y papelera (11)~~: hecho.
 6. Versionado (16), aviso de actualización y actualizaciones (8), y firma (9). El aviso y el versionado van juntos, porque el aviso necesita saber qué versión está instalada.
 7. El resto según se necesite.

@@ -14,6 +14,7 @@ import type { Gasto, ResumenMes } from "../tipos";
 import { leerMonto, montoEditable, pesos } from "../formato";
 import { calcularMetas, mesDe, sumarMeses, textoMes, type Meta } from "./calculo";
 import { textoError } from "../errores";
+import { alCambiarDatos, ofrecerDeshacer } from "../papelera/deshacer";
 
 export default function Finanzas() {
   const [mes, setMes] = useState(() => mesDe(new Date()));
@@ -38,6 +39,8 @@ export default function Finanzas() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => alCambiarDatos(cargar), [cargar]);
 
   async function ejecutar(accion: () => Promise<unknown>) {
     try {
@@ -303,7 +306,9 @@ function Gastos(props: { mes: string; gastos: Gasto[]; ejecutar: (a: () => Promi
                 aria-label={`Eliminar ${g.descripcion}`}
                 onClick={() => {
                   if (window.confirm(`¿Eliminar "${g.descripcion}"?`))
-                    ejecutar(async () => eliminarGasto(await obtenerDb(), g.id));
+                    ejecutar(async () =>
+                      ofrecerDeshacer(`Se eliminó "${g.descripcion}".`, await eliminarGasto(await obtenerDb(), g.id)),
+                    );
                 }}
               >
                 ×
