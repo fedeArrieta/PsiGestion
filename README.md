@@ -18,7 +18,17 @@ La app hace una copia automática de la base al abrirse (como máximo una vez po
 
 ## Descargar el instalador
 
-Cada cambio compila el instalador en GitHub Actions (flujo **Instalador de Windows**). Abrí la ejecución más reciente en la pestaña *Actions* y descargá el artefacto `PsiGestion-instalador-windows`, que trae el `.exe` (NSIS) y el `.msi`.
+La última versión publicada está en [Releases](https://github.com/fedeArrieta/PsiGestion/releases/latest). Una vez instalada, la app avisa sola cuando sale una versión nueva y se actualiza con un clic.
+
+Además, cada cambio compila un instalador de prueba en GitHub Actions (flujo **Instalador de Windows**): abrí la ejecución en la pestaña *Actions* y descargá el artefacto `PsiGestion-instalador-windows`.
+
+## Publicar una versión
+
+1. Subir la versión en `package.json` y `src-tauri/Cargo.toml` (por ejemplo, `0.2.1`).
+2. Agregar arriba en `CHANGELOG.md` la sección `## [0.2.1] - AAAA-MM-DD` con las novedades en español.
+3. Después de mergear, crear y empujar el tag: `git tag v0.2.1 && git push origin v0.2.1`.
+
+El flujo **Publicar versión** compila, firma la actualización con el secreto `TAURI_SIGNING_PRIVATE_KEY` y crea el Release con `latest.json`. Si la clave privada se pierde, las versiones instaladas ya no pueden actualizarse solas (habría que reinstalar a mano), así que guardala también fuera de GitHub.
 
 ## Desarrollo local (Windows)
 
