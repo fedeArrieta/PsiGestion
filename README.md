@@ -26,7 +26,7 @@ Además, cada cambio compila un instalador de prueba en GitHub Actions (flujo **
 
 1. Subir la versión en `package.json` y `src-tauri/Cargo.toml` (por ejemplo, `0.2.1`).
 2. Agregar arriba en `CHANGELOG.md` la sección `## [0.2.1] - AAAA-MM-DD` con las novedades en español.
-3. Después de mergear, crear y empujar el tag: `git tag v0.2.1 && git push origin v0.2.1`.
+3. Después de mergear, en la pestaña *Actions* elegir **Publicar versión** y tocar *Run workflow* sobre `main`. (También se puede empujar el tag: `git tag v0.2.1 && git push origin v0.2.1`.)
 
 El flujo **Publicar versión** compila, firma la actualización con el secreto `TAURI_SIGNING_PRIVATE_KEY` y crea el Release con `latest.json`. Si la clave privada se pierde, las versiones instaladas ya no pueden actualizarse solas (habría que reinstalar a mano), así que guardala también fuera de GitHub.
 
