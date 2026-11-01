@@ -1,11 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  ChartColumn,
+  DatabaseBackup,
+  House,
+  Info,
+  Lock,
+  Moon,
+  ShieldCheck,
+  Sparkles,
+  SunMedium,
+  SunMoon,
+  Trash2,
+  Users,
+  type LucideProps,
+} from "lucide-react";
 import { obtenerDb } from "./db";
-import { vaciarPapeleraVencida, verificarIntegridad } from "./repositorio";
+import { guardarConfiguracion, leerConfiguracion, vaciarPapeleraVencida, verificarIntegridad } from "./repositorio";
 import { aIsoLocal } from "./fechas";
 import Copias from "./copias/Copias";
 import { copiaAtrasada, diasSinCopia } from "./copias/logica";
 import { copiaAutomaticaSiCorresponde, leerConfigCopias, resultadoRestauracion } from "./copias/servicio";
 import Agenda from "./agenda/Agenda";
+import Inicio, { type DestinoInicio } from "./inicio/Inicio";
+import { iniciales } from "./inicio/logica";
+import { Logo } from "./marca/Logo";
+import { guardarTema, leerTema, NOMBRE_TEMA, SIGUIENTE_TEMA, type Tema } from "./marca/tema";
 import Pacientes from "./pacientes/Pacientes";
 import Finanzas from "./finanzas/Finanzas";
 import Acceso from "./seguridad/Acceso";
@@ -19,16 +40,28 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import "./App.css";
 import { textoError } from "./errores";
 
-type Seccion = "agenda" | "pacientes" | "finanzas" | "copias" | "papelera" | "seguridad" | "version";
+type Seccion = "inicio" | "agenda" | "pacientes" | "finanzas" | "copias" | "papelera" | "seguridad" | "version";
 
-const SECCIONES: { id: Seccion; titulo: string }[] = [
-  { id: "agenda", titulo: "Agenda" },
-  { id: "pacientes", titulo: "Pacientes" },
-  { id: "finanzas", titulo: "Finanzas" },
-  { id: "copias", titulo: "Copias de seguridad" },
-  { id: "papelera", titulo: "Papelera e historial" },
-  { id: "seguridad", titulo: "Seguridad" },
+type Icono = ComponentType<LucideProps>;
+
+const SECCIONES: { id: Seccion; titulo: string; icono: Icono }[] = [
+  { id: "inicio", titulo: "Inicio", icono: House },
+  { id: "agenda", titulo: "Agenda", icono: CalendarDays },
+  { id: "pacientes", titulo: "Pacientes", icono: Users },
+  { id: "finanzas", titulo: "Finanzas", icono: ChartColumn },
 ];
+
+const SECCIONES_CONFIGURACION: { id: Seccion; titulo: string; icono: Icono }[] = [
+  { id: "copias", titulo: "Copias de seguridad", icono: DatabaseBackup },
+  { id: "papelera", titulo: "Papelera e historial", icono: Trash2 },
+  { id: "seguridad", titulo: "Seguridad", icono: ShieldCheck },
+];
+
+const ICONO_TEMA: Record<Tema, Icono> = { auto: SunMoon, claro: SunMedium, oscuro: Moon };
+const ICONO_AVISO: Record<"error" | "aviso" | "nota", Icono> = { error: AlertTriangle, aviso: AlertTriangle, nota: Sparkles };
+
+/** Nombre con el que la app saluda (ej.: "Dra. Martínez"). */
+const CLAVE_NOMBRE = "nombre_profesional";
 
 /** Cada cuánto se revisa si pasó el tiempo de inactividad. */
 const REVISAR_INACTIVIDAD_MS = 15 * 1000;
@@ -95,7 +128,31 @@ function useBloqueoPorInactividad(minutos: number, onBloquear: () => void) {
 }
 
 function Principal({ onBloquear }: { onBloquear: () => void }) {
-  const [seccion, setSeccion] = useState<Seccion>("agenda");
+  const [seccion, setSeccionEstado] = useState<Seccion>("inicio");
+  const [abrirNuevoTurno, setAbrirNuevoTurno] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [tema, setTema] = useState<Tema>(leerTema);
+
+  const setSeccion = useCallback((s: Seccion) => {
+    setAbrirNuevoTurno(false);
+    setSeccionEstado(s);
+  }, []);
+
+  const irDesdeInicio = useCallback((destino: DestinoInicio) => {
+    setSeccionEstado(destino === "nuevo-turno" ? "agenda" : destino);
+    setAbrirNuevoTurno(destino === "nuevo-turno");
+  }, []);
+
+  const cambiarNombre = useCallback(async (n: string) => {
+    await guardarConfiguracion(await obtenerDb(), CLAVE_NOMBRE, n || null);
+    setNombre(n);
+  }, []);
+
+  function cambiarTema() {
+    const t = SIGUIENTE_TEMA[tema];
+    guardarTema(t);
+    setTema(t);
+  }
   const [minutosBloqueo, setMinutosBloqueo] = useState(MINUTOS_BLOQUEO_POR_DEFECTO);
   useBloqueoPorInactividad(minutosBloqueo, onBloquear);
 
@@ -171,6 +228,9 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         const db = await obtenerDb();
         await db.select("SELECT 1");
         setEstadoDb({ tipo: "ok" });
+        leerConfiguracion(db)
+          .then((c) => setNombre(c[CLAVE_NOMBRE] ?? ""))
+          .catch(() => {});
       } catch (e) {
         setEstadoDb({ tipo: "error", mensaje: textoError(e, "abrir base") });
         return;
@@ -209,40 +269,59 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
   return (
     <div className="app">
       <nav className="menu">
-        <h1 className="marca">PsiGestion</h1>
+        <Logo tamano={40} />
         {SECCIONES.map((s) => (
-          <button
-            key={s.id}
-            className={s.id === seccion ? "item activo" : "item"}
-            onClick={() => setSeccion(s.id)}
-          >
-            {s.titulo}
-          </button>
+          <ItemMenu key={s.id} {...s} activo={s.id === seccion} onClick={() => setSeccion(s.id)} />
         ))}
-        {avisos.map((a) => (
-          <button
-            key={a.texto}
-            className={`aviso-menu ${a.tipo}`}
-            onClick={() => (a.ir ? setSeccion(a.ir) : a === avisoRestauracion && setAvisoRestauracion(null))}
-          >
-            {a.texto}
-          </button>
+        <div className="menu-grupo">Configuración</div>
+        {SECCIONES_CONFIGURACION.map((s) => (
+          <ItemMenu key={s.id} {...s} activo={s.id === seccion} onClick={() => setSeccion(s.id)} />
         ))}
-        <button className="item bloquear" onClick={onBloquear}>
-          Bloquear
-        </button>
-        <button className={seccion === "version" ? "item version activo" : "item version"} onClick={() => setSeccion("version")}>
-          {version ? `Versión ${version}` : "Versión y novedades"}
-        </button>
-        <div className="estado-db">
-          {estadoDb.tipo === "cargando" && "Conectando base de datos…"}
-          {estadoDb.tipo === "ok" && "Base de datos lista"}
-          {estadoDb.tipo === "error" && `Error en la base de datos: ${estadoDb.mensaje}`}
+        <div className="menu-pie">
+          {avisos.map((a) => {
+            const IconoAviso = ICONO_AVISO[a.tipo];
+            return (
+              <button
+                key={a.texto}
+                className={`aviso-menu ${a.tipo}`}
+                onClick={() => (a.ir ? setSeccion(a.ir) : a === avisoRestauracion && setAvisoRestauracion(null))}
+              >
+                <IconoAviso size={16} className="icono" />
+                {a.texto}
+              </button>
+            );
+          })}
+          <ItemMenu
+            titulo={NOMBRE_TEMA[tema]}
+            icono={ICONO_TEMA[tema]}
+            chico
+            onClick={cambiarTema}
+          />
+          <ItemMenu
+            titulo={version ? `Versión ${version}` : "Versión y novedades"}
+            icono={Info}
+            chico
+            activo={seccion === "version"}
+            onClick={() => setSeccion("version")}
+          />
+          <ItemMenu titulo="Bloquear" icono={Lock} chico onClick={onBloquear} />
+          <div className="menu-perfil">
+            <span className="avatar">{nombre ? iniciales(nombre.replace(/^(dr|dra|lic|psic)\.?\s+/i, "")) : "Ψ"}</span>
+            <div className="menu-perfil-texto">
+              <span>{nombre || "Mi consultorio"}</span>
+              <span className={estadoDb.tipo === "error" ? "estado-db error" : "estado-db"}>
+                {estadoDb.tipo === "cargando" && "Conectando base de datos…"}
+                {estadoDb.tipo === "ok" && "Base de datos lista"}
+                {estadoDb.tipo === "error" && `Error en la base de datos: ${estadoDb.mensaje}`}
+              </span>
+            </div>
+          </div>
         </div>
       </nav>
       <main className="contenido">
         {actualizacion && <AvisoActualizacion update={actualizacion} onCerrar={() => setActualizacion(null)} />}
-        {seccion === "agenda" && <Agenda />}
+        {seccion === "inicio" && <Inicio nombre={nombre} onNombre={cambiarNombre} onIr={irDesdeInicio} />}
+        {seccion === "agenda" && <Agenda abrirNuevo={abrirNuevoTurno} />}
         {seccion === "pacientes" && <Pacientes />}
         {seccion === "finanzas" && <Finanzas />}
         {seccion === "copias" && <Copias onCambio={revisarCopias} />}
@@ -252,6 +331,27 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         <BarraDeshacer />
       </main>
     </div>
+  );
+}
+
+function ItemMenu({
+  titulo,
+  icono: IconoItem,
+  activo = false,
+  chico = false,
+  onClick,
+}: {
+  titulo: string;
+  icono: Icono;
+  activo?: boolean;
+  chico?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button className={`item${activo ? " activo" : ""}${chico ? " chico" : ""}`} onClick={onClick} aria-current={activo ? "page" : undefined}>
+      <IconoItem size={chico ? 17 : 19} className="icono" />
+      {titulo}
+    </button>
   );
 }
 
