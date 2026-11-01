@@ -117,7 +117,7 @@ Hecho en el paso 4:
 - La app busca al abrir y cada 24 horas el archivo `latest.json` del último Release de GitHub. El aviso es una barra arriba del contenido (no una ventana), con las novedades y los tres botones. "Recordarme más tarde" lo pospone 24 horas.
 - "Actualizar ahora" pide confirmación, hace una copia de seguridad ("Antes de restaurar o actualizar"), descarga, verifica la firma e instala.
 - En **Versión y novedades** (abajo en el menú) están la versión instalada, la opción de búsqueda automática, el botón "Buscar actualizaciones" y las novedades de cada versión.
-- Las versiones se publican con el flujo **Publicar versión** (`.github/workflows/publicar-version.yml`) al empujar un tag `vX.Y.Z`. Las actualizaciones se firman con una clave guardada en el secreto `TAURI_SIGNING_PRIVATE_KEY` del repositorio; la clave pública está en `tauri.conf.json`.
+- Las versiones se publican con el flujo **Publicar versión** (`.github/workflows/publicar-version.yml`) desde Actions ("Run workflow") o al empujar un tag `vX.Y.Z`. Las actualizaciones se firman con una clave guardada en el secreto `TAURI_SIGNING_PRIVATE_KEY` del repositorio; la clave pública está en `tauri.conf.json`.
 
 Lo que se había pedido:
 
