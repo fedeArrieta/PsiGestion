@@ -27,6 +27,7 @@ import { distribuirEnColumnas } from "./logica";
 import { ALTO_HORA, DURACION_PREDETERMINADA, HORA_FIN, HORA_INICIO } from "./config";
 import TurnoModal, { type ResultadoModal } from "./TurnoModal";
 import { textoError } from "../errores";
+import { alCambiarDatos, ofrecerDeshacer } from "../papelera/deshacer";
 
 type Vista = "semana" | "dia";
 type Edicion = { turno: TurnoConPaciente | null; inicioSugerido: string };
@@ -67,6 +68,8 @@ export default function Agenda() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => alCambiarDatos(cargar), [cargar]);
 
   // La grilla va de HORA_INICIO a HORA_FIN, pero se agranda si hay turnos fuera de ese horario.
   const [horaDesde, horaHasta] = useMemo(() => {
@@ -111,7 +114,7 @@ export default function Agenda() {
   }
 
   async function eliminar(id: number) {
-    await eliminarTurno(await obtenerDb(), id);
+    ofrecerDeshacer("Se eliminó el turno.", await eliminarTurno(await obtenerDb(), id));
     setEdicion(null);
     await cargar();
   }

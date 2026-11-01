@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { obtenerDb } from "./db";
-import { verificarIntegridad } from "./repositorio";
+import { vaciarPapeleraVencida, verificarIntegridad } from "./repositorio";
+import { aIsoLocal } from "./fechas";
 import Copias from "./copias/Copias";
 import { copiaAtrasada, diasSinCopia } from "./copias/logica";
 import { copiaAutomaticaSiCorresponde, leerConfigCopias, resultadoRestauracion } from "./copias/servicio";
@@ -8,18 +9,20 @@ import Agenda from "./agenda/Agenda";
 import Pacientes from "./pacientes/Pacientes";
 import Finanzas from "./finanzas/Finanzas";
 import Acceso from "./seguridad/Acceso";
+import Papelera, { BarraDeshacer } from "./papelera/Papelera";
 import Seguridad, { leerMinutosBloqueo } from "./seguridad/Seguridad";
 import { bloquear, debeBloquear, estadoAcceso, MINUTOS_BLOQUEO_POR_DEFECTO, type EstadoAcceso } from "./seguridad/servicio";
 import "./App.css";
 import { textoError } from "./errores";
 
-type Seccion = "agenda" | "pacientes" | "finanzas" | "copias" | "seguridad";
+type Seccion = "agenda" | "pacientes" | "finanzas" | "copias" | "papelera" | "seguridad";
 
 const SECCIONES: { id: Seccion; titulo: string }[] = [
   { id: "agenda", titulo: "Agenda" },
   { id: "pacientes", titulo: "Pacientes" },
   { id: "finanzas", titulo: "Finanzas" },
   { id: "copias", titulo: "Copias de seguridad" },
+  { id: "papelera", titulo: "Papelera e historial" },
   { id: "seguridad", titulo: "Seguridad" },
 ];
 
@@ -154,6 +157,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
       } catch (e) {
         setAvisoIntegridad({ tipo: "error", texto: `No se pudo revisar la base de datos: ${textoError(e, "chequeo de integridad")}` });
       }
+      await vaciarPapeleraVencida(await obtenerDb(), aIsoLocal(new Date())).catch(() => {});
       await revisarCopias();
       intervalo = window.setInterval(revisarCopias, REVISAR_COPIA_MS);
     })();
@@ -198,7 +202,9 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         {seccion === "pacientes" && <Pacientes />}
         {seccion === "finanzas" && <Finanzas />}
         {seccion === "copias" && <Copias onCambio={revisarCopias} />}
+        {seccion === "papelera" && <Papelera />}
         {seccion === "seguridad" && <Seguridad onMinutos={setMinutosBloqueo} />}
+        <BarraDeshacer />
       </main>
     </div>
   );
