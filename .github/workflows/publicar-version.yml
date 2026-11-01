@@ -1,0 +1,74 @@
+name: Publicar versión
+
+# Se publica una versión empujando un tag "vX.Y.Z" que coincida con la versión de package.json.
+# Genera el instalador, lo firma para el actualizador y crea el Release de GitHub con latest.json,
+# que es lo que consulta la app para avisar que hay una versión nueva.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Pruebas
+        run: npm test
+
+      - name: Revisar versión y novedades
+        id: notas
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::El tag $GITHUB_REF_NAME no coincide con la versión de package.json ($version)."
+            exit 1
+          fi
+          node -e '
+            const fs = require("fs");
+            const v = require("./package.json").version;
+            const texto = fs.readFileSync("CHANGELOG.md", "utf8");
+            const partes = texto.split(/^## /m).slice(1);
+            const seccion = partes.find((p) => p.startsWith("[" + v + "]"));
+            if (!seccion) { console.error("Falta la sección [" + v + "] en CHANGELOG.md"); process.exit(1); }
+            fs.writeFileSync("notas.md", seccion.split("\n").slice(1).join("\n").trim() + "\n");
+          '
+          {
+            echo "cuerpo<<FIN_NOTAS"
+            cat notas.md
+            echo "FIN_NOTAS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compilar, firmar y publicar
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: PsiGestion ${{ github.ref_name }}
+          releaseBody: ${{ steps.notas.outputs.cuerpo }}
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: '--config {"bundle":{"createUpdaterArtifacts":true}}'

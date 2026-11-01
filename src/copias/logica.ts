@@ -39,7 +39,7 @@ export function leerNombreCopia(nombre: string): { tipo: TipoCopia; fecha: Date 
 export const TEXTO_TIPO: Record<TipoCopia, string> = {
   auto: "Automática",
   manual: "Manual",
-  previa: "Antes de restaurar",
+  previa: "Antes de restaurar o actualizar",
 };
 
 /** Las copias automáticas que sobran, de las más viejas. Las manuales nunca se borran solas. */

@@ -1,15 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permisos de la ventana principal: solo lo que usa la app (leer y escribir la base, que abre Rust, elegir archivos o carpetas y registrar errores).",
+  "description": "Permisos de la ventana principal: solo lo que usa la app (leer y escribir la base, que abre Rust, elegir archivos o carpetas, registrar errores y buscar e instalar actualizaciones).",
   "windows": [
     "main"
   ],
   "permissions": [
+    "core:app:allow-version",
     "sql:allow-select",
     "sql:allow-execute",
     "dialog:allow-open",
     "dialog:allow-save",
-    "log:allow-log"
+    "log:allow-log",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    "process:allow-restart"
   ]
 }

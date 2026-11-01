@@ -1,6 +1,6 @@
 [package]
 name = "psigestion"
-version = "0.1.0"
+version = "0.2.0"
 description = "Agenda y finanzas para psicólogos"
 authors = ["Federico Arrieta"]
 edition = "2024"
@@ -36,6 +36,8 @@ libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher-vendored-ope
 tauri-plugin-log = "2"
 log = "0.4"
 rust_xlsxwriter = "0.102.0"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

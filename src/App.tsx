@@ -12,10 +12,14 @@ import Acceso from "./seguridad/Acceso";
 import Papelera, { BarraDeshacer } from "./papelera/Papelera";
 import Seguridad, { leerMinutosBloqueo } from "./seguridad/Seguridad";
 import { bloquear, debeBloquear, estadoAcceso, MINUTOS_BLOQUEO_POR_DEFECTO, type EstadoAcceso } from "./seguridad/servicio";
+import VersionYNovedades, { AvisoActualizacion } from "./actualizacion/Actualizacion";
+import { buscarActualizacion, leerVersionVista, marcarNovedadesVistas, versionInstalada } from "./actualizacion/servicio";
+import { hayNovedadesSinVer } from "./actualizacion/logica";
+import type { Update } from "@tauri-apps/plugin-updater";
 import "./App.css";
 import { textoError } from "./errores";
 
-type Seccion = "agenda" | "pacientes" | "finanzas" | "copias" | "papelera" | "seguridad";
+type Seccion = "agenda" | "pacientes" | "finanzas" | "copias" | "papelera" | "seguridad" | "version";
 
 const SECCIONES: { id: Seccion; titulo: string }[] = [
   { id: "agenda", titulo: "Agenda" },
@@ -31,6 +35,9 @@ const REVISAR_INACTIVIDAD_MS = 15 * 1000;
 
 /** Cada cuánto se revisa, con la app abierta, si toca la copia automática. */
 const REVISAR_COPIA_MS = 60 * 60 * 1000;
+
+/** Cada cuánto se busca una actualización con la app abierta. */
+const REVISAR_ACTUALIZACION_MS = 24 * 60 * 60 * 1000;
 
 interface Aviso {
   tipo: "error" | "aviso" | "nota";
@@ -102,6 +109,39 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
   const [avisoIntegridad, setAvisoIntegridad] = useState<Aviso | null>(null);
   const [avisoRestauracion, setAvisoRestauracion] = useState<Aviso | null>(null);
   const [avisoCopias, setAvisoCopias] = useState<Aviso | null>(null);
+  const [avisoNovedades, setAvisoNovedades] = useState<Aviso | null>(null);
+  const [actualizacion, setActualizacion] = useState<Update | null>(null);
+  const [version, setVersion] = useState("");
+
+  // Versión instalada, "Novedades" una vez después de actualizar y búsqueda de actualizaciones.
+  useEffect(() => {
+    let intervalo: number | undefined;
+    (async () => {
+      try {
+        const v = await versionInstalada();
+        setVersion(v);
+        if (hayNovedadesSinVer(await leerVersionVista(), v)) {
+          setAvisoNovedades({ tipo: "nota", texto: `Novedades de la versión ${v}`, ir: "version" });
+        }
+      } catch {
+        // Si falla, solo no se muestran la versión ni las novedades.
+      }
+      const buscar = () =>
+        buscarActualizacion(false)
+          .then((u) => u && setActualizacion(u))
+          .catch(() => {});
+      await buscar();
+      intervalo = window.setInterval(buscar, REVISAR_ACTUALIZACION_MS);
+    })();
+    return () => window.clearInterval(intervalo);
+  }, []);
+
+  useEffect(() => {
+    if (seccion === "version" && version && avisoNovedades) {
+      marcarNovedadesVistas(version).catch(() => {});
+      setAvisoNovedades(null);
+    }
+  }, [seccion, version, avisoNovedades]);
 
   const revisarCopias = useCallback(async () => {
     try {
@@ -164,7 +204,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
     return () => window.clearInterval(intervalo);
   }, [revisarCopias]);
 
-  const avisos = [avisoIntegridad, avisoRestauracion, avisoCopias].filter((a): a is Aviso => a !== null);
+  const avisos = [avisoIntegridad, avisoRestauracion, avisoCopias, avisoNovedades].filter((a): a is Aviso => a !== null);
 
   return (
     <div className="app">
@@ -191,6 +231,9 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         <button className="item bloquear" onClick={onBloquear}>
           Bloquear
         </button>
+        <button className={seccion === "version" ? "item version activo" : "item version"} onClick={() => setSeccion("version")}>
+          {version ? `Versión ${version}` : "Versión y novedades"}
+        </button>
         <div className="estado-db">
           {estadoDb.tipo === "cargando" && "Conectando base de datos…"}
           {estadoDb.tipo === "ok" && "Base de datos lista"}
@@ -198,12 +241,14 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         </div>
       </nav>
       <main className="contenido">
+        {actualizacion && <AvisoActualizacion update={actualizacion} onCerrar={() => setActualizacion(null)} />}
         {seccion === "agenda" && <Agenda />}
         {seccion === "pacientes" && <Pacientes />}
         {seccion === "finanzas" && <Finanzas />}
         {seccion === "copias" && <Copias onCambio={revisarCopias} />}
         {seccion === "papelera" && <Papelera />}
         {seccion === "seguridad" && <Seguridad onMinutos={setMinutosBloqueo} />}
+        {seccion === "version" && <VersionYNovedades version={version} onActualizacion={setActualizacion} />}
         <BarraDeshacer />
       </main>
     </div>

@@ -21,15 +21,15 @@ Prioridades:
 | 5 | Endurecer la seguridad de Tauri (CSP y permisos) | Alta | Hecho (paso 2) |
 | 6 | Exportación de datos (portabilidad) | Media | Hecho (paso 4) |
 | 7 | Registro de errores (logs) | Media | Hecho (paso 4) |
-| 8 | Aviso de actualización y actualizaciones automáticas | Media | No existe |
-| 9 | Firma digital del instalador | Media | No existe |
+| 8 | Aviso de actualización y actualizaciones automáticas | Media | Hecho (paso 6) |
+| 9 | Firma digital del instalador | Media | Pendiente (tiene costo) |
 | 10 | Precisión de los montos (sin errores de redondeo) | Media | Hecho (paso 5) |
 | 11 | Borrado seguro y papelera | Media | Hecho (paso 5) |
 | 12 | Rendimiento con varios años de datos | Media | Cubierto por ahora |
 | 13 | Calidad: pruebas y CI | Media | Cubierto en parte |
 | 14 | Usabilidad y atajos de teclado | Baja | Parcial |
 | 15 | Accesibilidad | Baja | Parcial |
-| 16 | Versionado y notas de cambios | Baja | No existe |
+| 16 | Versionado y notas de cambios | Baja | Hecho (paso 6) |
 | 17 | Funcionamiento sin conexión | Baja | Cubierto |
 
 ## Lo que la app ya cubre
@@ -112,7 +112,14 @@ Hecho en el paso 4:
 
 ### 8. Aviso de actualización y actualizaciones automáticas (Media)
 
-Hoy cada versión nueva se descarga a mano desde GitHub Actions, y no hay forma de enterarse desde la app de que salió una.
+**Hecho (paso 6).** Se cumplió todo lo de abajo:
+
+- La app busca al abrir y cada 24 horas el archivo `latest.json` del último Release de GitHub. El aviso es una barra arriba del contenido (no una ventana), con las novedades y los tres botones. "Recordarme más tarde" lo pospone 24 horas.
+- "Actualizar ahora" pide confirmación, hace una copia de seguridad ("Antes de restaurar o actualizar"), descarga, verifica la firma e instala.
+- En **Versión y novedades** (abajo en el menú) están la versión instalada, la opción de búsqueda automática, el botón "Buscar actualizaciones" y las novedades de cada versión.
+- Las versiones se publican con el flujo **Publicar versión** (`.github/workflows/publicar-version.yml`) al empujar un tag `vX.Y.Z`. Las actualizaciones se firman con una clave guardada en el secreto `TAURI_SIGNING_PRIVATE_KEY` del repositorio; la clave pública está en `tauri.conf.json`.
+
+Lo que se había pedido:
 
 **Aviso de actualización del sistema**
 
@@ -137,6 +144,13 @@ Hoy cada versión nueva se descarga a mano desde GitHub Actions, y no hay forma 
 ### 9. Firma digital del instalador (Media)
 
 Sin firma, Windows SmartScreen muestra "Windows protegió su PC" al instalar. Firmar el instalador con un certificado de firma de código evita la advertencia y garantiza que no fue modificado. Tiene un costo anual, así que puede quedar para más adelante.
+
+**Pendiente.** Mientras tanto, los paquetes de actualización sí van firmados (punto 8): la app rechaza una actualización que no haya firmado la clave del proyecto. La advertencia de SmartScreen sigue apareciendo al instalar a mano. Opciones cuando se decida:
+
+- Azure Trusted Signing (alrededor de USD 10 por mes): se integra con GitHub Actions, sin certificado físico.
+- Un certificado de firma de código OV de una autoridad certificadora (desde unos USD 200 por año).
+
+Con cualquiera de las dos, el flujo **Publicar versión** solo necesita los secretos del certificado para firmar el instalador.
 
 ### 10. Precisión de los montos (Media)
 
@@ -183,6 +197,8 @@ Con las consultas por rango de fechas y los índices actuales, la app debería r
 
 ### 16. Versionado y notas de cambios (Baja)
 
+**Hecho (paso 6).** La versión sale de `package.json` (Tauri la toma de ahí) y se ve abajo en el menú. Las novedades están en `CHANGELOG.md`, la app las muestra en **Versión y novedades** y avisa una vez al abrir una versión nueva. Una prueba verifica que el CHANGELOG tenga la entrada de la versión actual.
+
 - Numerar versiones (0.1.0, 0.2.0…) y mostrar la versión en la app.
 - Mantener un `CHANGELOG.md` en español y mostrar "Novedades" después de actualizar.
 
@@ -197,5 +213,5 @@ Ya cubierto: la app no necesita internet. Solo hay que preservarlo al sumar func
 3. ~~Contraseña (3) y cifrado (4)~~: hecho.
 4. ~~Logs (7) y exportación (6)~~: hecho.
 5. ~~Precisión de montos (10) y papelera (11)~~: hecho.
-6. Versionado (16), aviso de actualización y actualizaciones (8), y firma (9). El aviso y el versionado van juntos, porque el aviso necesita saber qué versión está instalada.
+6. ~~Versionado (16), aviso de actualización y actualizaciones (8)~~: hecho. Firma (9): pendiente, tiene costo. El aviso y el versionado van juntos, porque el aviso necesita saber qué versión está instalada.
 7. El resto según se necesite.

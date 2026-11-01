@@ -11,6 +11,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(registro::plugin())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         // Sin migraciones acá: la base cifrada la abre Rust al desbloquear (ver base.rs).
         .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
