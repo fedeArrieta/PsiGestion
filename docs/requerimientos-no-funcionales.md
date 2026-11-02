@@ -93,6 +93,7 @@ Hecho en el paso 2:
 
 - CSP en `tauri.conf.json`: solo recursos propios de la app, sin scripts, estilos, imágenes ni conexiones externas. Además `freezePrototype` para dificultar la manipulación de objetos de JavaScript.
 - Permisos de `capabilities/default.json` reducidos a lo que se usa: abrir la base, leer, escribir y elegir una carpeta. Se quitaron `core:default` y el permiso de cerrar la base.
+- Recordatorios (versión 0.7.0): `opener:allow-open-url` acotado a `https://wa.me/*` y `mailto:*`, para que la app solo pueda abrir WhatsApp o el programa de correo con el mensaje armado. La CSP no cambia: los enlaces los abre el sistema, no la ventana de la app. Los mensajes llevan solo el nombre del paciente, el día y la hora (nunca notas ni datos clínicos), no se escriben en el registro y no se envían solos: la profesional los revisa y los manda.
 - CI semanal y en cada cambio con `npm audit` y `cargo audit` (flujo *Seguridad de dependencias*), y Dependabot propone actualizaciones una vez por mes.
 
 ### 6. Exportación de datos (Media)

@@ -15,6 +15,13 @@ import type {
 } from "./tipos";
 import { seSuperponen } from "./agenda/logica";
 import { leerPolitica, CLAVE_CON_AVISO, CLAVE_SIN_AVISO, type PoliticaAusencias } from "./ausencias/logica";
+import {
+  CLAVE_ASUNTO,
+  CLAVE_MENSAJE,
+  leerPlantilla,
+  type PlantillaRecordatorio,
+  type TurnoParaRecordatorio,
+} from "./recordatorios/logica";
 import { fechasDeSerie, horizonte, periodoDe, repartirFechas, sumarDiasFecha } from "./agenda/series";
 
 /** Lo mínimo que se usa de la base. En la app es tauri-plugin-sql; en los tests, SQLite de Node. */
@@ -149,7 +156,9 @@ export async function actualizarTurno(db: Db, id: number, datos: DatosTurno): Pr
         SET monto = CASE WHEN paciente_id = $1 THEN monto
                          ELSE (SELECT monto_sesion FROM pacientes WHERE id = $1) END,
             paciente_id = $1, inicio = $2, duracion_min = $3, estado = $4, notas = $5,
-            pagado = COALESCE($6, pagado), aviso = $7, cargo = $8
+            pagado = COALESCE($6, pagado), aviso = $7, cargo = $8,
+            -- Si cambia el día o la hora, el recordatorio enviado ya no vale.
+            recordatorio_en = CASE WHEN inicio = $2 THEN recordatorio_en END
       WHERE id = $9`,
     [datos.paciente_id, datos.inicio, datos.duracion_min, estado, vacioANull(datos.notas), pagado, aviso, cargo, id],
   );
@@ -689,6 +698,48 @@ export async function resumenMes(db: Db, mes: string): Promise<ResumenMes> {
     gastos: g.total / 100,
     precio_promedio: (p.promedio ?? 0) / 100,
   };
+}
+
+// ---------- Recordatorios ----------
+
+/** Turnos programados del día (AAAA-MM-DD) con los datos de contacto del paciente, para recordarlos. */
+export function listarParaRecordatorios(db: Db, fecha: string): Promise<TurnoParaRecordatorio[]> {
+  return db.select<TurnoParaRecordatorio[]>(
+    `SELECT t.id, t.paciente_id, t.inicio, t.duracion_min, t.recordatorio_en,
+            p.nombre AS paciente_nombre, p.telefono, p.email
+       FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
+      WHERE t.estado = 'programado' AND t.inicio >= $1 AND t.inicio < $2
+      ORDER BY t.inicio, t.id`,
+    [`${fecha}T00:00`, `${sumarDiasFecha(fecha, 1)}T00:00`],
+  );
+}
+
+/** Cuántos turnos programados del día todavía no tienen el recordatorio enviado. */
+export async function contarRecordatoriosPendientes(db: Db, fecha: string): Promise<number> {
+  const [f] = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM turnos
+      WHERE estado = 'programado' AND recordatorio_en IS NULL AND inicio >= $1 AND inicio < $2`,
+    [`${fecha}T00:00`, `${sumarDiasFecha(fecha, 1)}T00:00`],
+  );
+  return f?.n ?? 0;
+}
+
+/** Marca (con la fecha y hora en que se envió) o desmarca el recordatorio de un turno. */
+export async function marcarRecordatorio(db: Db, turnoId: number, enviadoEn: string | null): Promise<void> {
+  await db.execute("UPDATE turnos SET recordatorio_en = $1 WHERE id = $2", [enviadoEn, turnoId]);
+}
+
+export async function leerPlantillaRecordatorio(db: Db): Promise<PlantillaRecordatorio> {
+  return leerPlantilla(await leerConfiguracion(db));
+}
+
+export async function guardarPlantillaRecordatorio(db: Db, p: PlantillaRecordatorio): Promise<void> {
+  const mensaje = p.mensaje.trim();
+  if (!mensaje) throw new Error("El mensaje del recordatorio no puede quedar vacío.");
+  await db.transaccion([
+    { sql: CONFIG_UPSERT, params: [CLAVE_MENSAJE, mensaje] },
+    { sql: CONFIG_UPSERT, params: [CLAVE_ASUNTO, p.asunto.trim() || null] },
+  ]);
 }
 
 // ---------- Configuración y cuidado de los datos ----------

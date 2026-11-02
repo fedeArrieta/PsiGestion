@@ -56,6 +56,11 @@ import {
   turnosConNota,
   guardarPoliticaAusencias,
   leerPoliticaAusencias,
+  listarParaRecordatorios,
+  contarRecordatoriosPendientes,
+  marcarRecordatorio,
+  leerPlantillaRecordatorio,
+  guardarPlantillaRecordatorio,
   type Db,
 } from "./repositorio";
 
@@ -845,6 +850,47 @@ describe("repositorio", () => {
         { estado: "ausente", aviso: "sin_aviso", cargo: null },
         { estado: "realizado", aviso: null, cargo: null },
       ]);
+    });
+  });
+
+  describe("recordatorios", () => {
+    it("lista solo los turnos programados del día, con el contacto del paciente", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", telefono: "11 1234 5678", email: "ana@mail.com" });
+      const beto = await crearPaciente(db, { nombre: "Beto" });
+      await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T15:00", duracion_min: 50 });
+      await crearTurno(db, { paciente_id: beto, inicio: "2026-11-03T09:00", duracion_min: 50 });
+      await crearTurno(db, { paciente_id: beto, inicio: "2026-11-03T11:00", duracion_min: 50, estado: "cancelado" });
+      await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T18:00", duracion_min: 50, estado: "ausente", aviso: "con_aviso" });
+      await crearTurno(db, { paciente_id: ana, inicio: "2026-11-04T09:00", duracion_min: 50 });
+      const lista = await listarParaRecordatorios(db, "2026-11-03");
+      expect(lista.map((t) => [t.paciente_nombre, t.inicio, t.telefono, t.email, t.recordatorio_en])).toEqual([
+        ["Beto", "2026-11-03T09:00", null, null, null],
+        ["Ana", "2026-11-03T15:00", "11 1234 5678", "ana@mail.com", null],
+      ]);
+      expect(await contarRecordatoriosPendientes(db, "2026-11-03")).toBe(2);
+    });
+
+    it("marca el envío y lo olvida si el turno cambia de horario", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const id = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T15:00", duracion_min: 50 });
+      await marcarRecordatorio(db, id, "2026-11-02T18:30");
+      expect((await listarParaRecordatorios(db, "2026-11-03"))[0].recordatorio_en).toBe("2026-11-02T18:30");
+      expect(await contarRecordatoriosPendientes(db, "2026-11-03")).toBe(0);
+      // Cambiar solo la nota no borra el envío.
+      await actualizarTurno(db, id, { paciente_id: ana, inicio: "2026-11-03T15:00", duracion_min: 50, notas: "x" });
+      expect((await listarParaRecordatorios(db, "2026-11-03"))[0].recordatorio_en).toBe("2026-11-02T18:30");
+      await actualizarTurno(db, id, { paciente_id: ana, inicio: "2026-11-03T16:00", duracion_min: 50 });
+      expect((await listarParaRecordatorios(db, "2026-11-03"))[0].recordatorio_en).toBeNull();
+      await marcarRecordatorio(db, id, "2026-11-02T18:31");
+      await marcarRecordatorio(db, id, null);
+      expect(await contarRecordatoriosPendientes(db, "2026-11-03")).toBe(1);
+    });
+
+    it("guarda la plantilla del mensaje", async () => {
+      const original = await leerPlantillaRecordatorio(db);
+      await guardarPlantillaRecordatorio(db, { mensaje: " Hola {nombre} ", asunto: "" });
+      expect(await leerPlantillaRecordatorio(db)).toEqual({ mensaje: "Hola {nombre}", asunto: original.asunto });
+      await expect(guardarPlantillaRecordatorio(db, { mensaje: "  ", asunto: "x" })).rejects.toThrow(/vacío/);
     });
   });
 });

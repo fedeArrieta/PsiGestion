@@ -14,6 +14,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // Recordatorios: abre wa.me o mailto: con el navegador o el correo (permiso acotado en capabilities).
+        .plugin(tauri_plugin_opener::init())
         // Sin migraciones acá: la base cifrada la abre Rust al desbloquear (ver base.rs).
         .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|app| {
