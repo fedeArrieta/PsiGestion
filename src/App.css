@@ -1963,3 +1963,113 @@ button.boton-icono.con-nota {
   color: var(--acento);
   background: var(--acento-suave);
 }
+
+/* Diario clínico dentro de la ficha del paciente */
+
+.modal.ficha:has(.ficha-turnos) {
+  height: min(700px, calc(100vh - 48px));
+}
+
+.ficha-turnos .pestanas button {
+  padding: 6px 12px;
+  font-size: 0.88rem;
+}
+
+.diario {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+}
+
+.diario-barra {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.diario-barra input {
+  width: 100%;
+}
+
+.diario-entradas {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 4px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.diario-entrada {
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 14px;
+  text-align: left;
+  border-left: 3px solid var(--acento);
+  font-weight: 400;
+}
+
+.diario-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diario-fecha::first-letter {
+  text-transform: uppercase;
+}
+
+.diario-seccion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diario-titulo {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--texto-suave);
+}
+
+.diario-texto {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.diario mark {
+  background: var(--calido-suave);
+  color: inherit;
+  border-radius: 3px;
+}
+
+.nota-fila {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.nota-fila .nota-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.nota-fila .diario-boton {
+  align-self: center;
+  padding: 8px;
+}
+
+.modal .diario-barra label.campo-buscar {
+  flex-direction: row;
+  align-items: center;
+}
+
+.diario-cabecera .nota {
+  white-space: nowrap;
+}

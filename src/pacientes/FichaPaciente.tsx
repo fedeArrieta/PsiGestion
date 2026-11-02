@@ -8,6 +8,7 @@ import {
   listarTurnosDePaciente,
   marcarPagado,
   saldarPaciente,
+  listarNotas,
   turnosConNota,
 } from "../repositorio";
 import type { PacienteConResumen, Turno } from "../tipos";
@@ -16,21 +17,26 @@ import { leerMonto, montoEditable, pesos } from "../formato";
 import { aIsoLocal, desdeIsoLocal } from "../fechas";
 import ImpresionFicha from "./ImpresionFicha";
 import { textoError } from "../errores";
-import NotaModal from "../notas/NotaModal";
+import NotaModal, { type InicioNota } from "../notas/NotaModal";
+import DiarioPaciente from "../notas/DiarioPaciente";
 
 interface Props {
   /** null = paciente nuevo */
   paciente: PacienteConResumen | null;
   onCambio: () => Promise<void> | void;
   onCerrar: () => void;
+  /** Pestaña que se muestra al abrir la ficha. */
+  pestanaInicial?: Pestana;
 }
+
+export type Pestana = "sesiones" | "diario";
 
 const fmtFecha = new Intl.DateTimeFormat("es-AR", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" });
 const fmtTurno = { format: (d: Date) => `${fmtFecha.format(d)} · ${aIsoLocal(d).slice(11, 16)}` };
 
 const etiquetaEstado = Object.fromEntries(ESTADOS_TURNO.map((e) => [e.valor, e.etiqueta]));
 
-export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
+export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaInicial = "sesiones" }: Props) {
   const [nombre, setNombre] = useState(paciente?.nombre ?? "");
   const [telefono, setTelefono] = useState(paciente?.telefono ?? "");
   const [email, setEmail] = useState(paciente?.email ?? "");
@@ -41,7 +47,10 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
   const [ocupado, setOcupado] = useState(false);
   const [imprimiendo, setImprimiendo] = useState(false);
   const [conNota, setConNota] = useState<Set<number>>(new Set());
-  const [notaDe, setNotaDe] = useState<Turno | null>(null);
+  const [nota, setNota] = useState<{ id: number | null; inicial?: InicioNota } | null>(null);
+  const [pestana, setPestana] = useState<Pestana>(pestanaInicial);
+  const [versionDiario, setVersionDiario] = useState(0);
+  const [cantidadNotas, setCantidadNotas] = useState<number | null>(null);
   const terminarImpresion = useCallback(() => setImprimiendo(false), []);
 
   useEffect(() => {
@@ -53,9 +62,14 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
   const cargarTurnos = useCallback(async () => {
     if (!paciente) return;
     const db = await obtenerDb();
-    const [t, n] = await Promise.all([listarTurnosDePaciente(db, paciente.id), turnosConNota(db, paciente.id)]);
+    const [t, n, notas] = await Promise.all([
+      listarTurnosDePaciente(db, paciente.id),
+      turnosConNota(db, paciente.id),
+      listarNotas(db, { pacienteId: paciente.id }),
+    ]);
     setTurnos(t);
     setConNota(n);
+    setCantidadNotas(notas.length);
   }, [paciente]);
 
   useEffect(() => {
@@ -171,14 +185,40 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
         {paciente && (
           <section className="ficha-turnos">
             <div className="ficha-turnos-cabecera">
-              <h4>Sesiones</h4>
-              {saldo > 0 && (
+              <div className="selector pestanas" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={pestana === "sesiones"}
+                  className={pestana === "sesiones" ? "activo" : ""}
+                  onClick={() => setPestana("sesiones")}
+                >
+                  Sesiones ({turnos.length})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={pestana === "diario"}
+                  className={pestana === "diario" ? "activo" : ""}
+                  onClick={() => setPestana("diario")}
+                >
+                  Diario clínico{cantidadNotas != null && ` (${cantidadNotas})`}
+                </button>
+              </div>
+              {pestana === "sesiones" && saldo > 0 && (
                 <button type="button" onClick={saldar} disabled={ocupado}>
                   Marcar todo pagado ({pesos(saldo)})
                 </button>
               )}
             </div>
-            {turnos.length === 0 ? (
+            {pestana === "diario" ? (
+              <DiarioPaciente
+                pacienteId={paciente.id}
+                version={versionDiario}
+                onCantidad={setCantidadNotas}
+                onAbrir={(id) => setNota({ id, inicial: id == null ? { paciente_id: paciente.id } : undefined })}
+              />
+            ) : turnos.length === 0 ? (
               <p className="vacio">Todavía no tiene turnos.</p>
             ) : (
               <ul className="lista-turnos">
@@ -192,7 +232,9 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
                       className={`boton-icono${conNota.has(t.id) ? " con-nota" : ""}`}
                       title={conNota.has(t.id) ? "Ver la nota clínica de esta sesión" : "Escribir la nota clínica de esta sesión"}
                       aria-label={conNota.has(t.id) ? "Ver nota clínica" : "Escribir nota clínica"}
-                      onClick={() => setNotaDe(t)}
+                      onClick={() =>
+                        setNota({ id: null, inicial: { paciente_id: t.paciente_id, turno_id: t.id, fecha: t.inicio.slice(0, 10) } })
+                      }
                     >
                       <NotebookPen size={15} />
                     </button>
@@ -209,12 +251,15 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
       </div>
       {paciente && imprimiendo && <ImpresionFicha paciente={paciente} turnos={turnos} onTerminar={terminarImpresion} />}
     </div>
-    {notaDe && (
+    {nota && (
       <NotaModal
-        notaId={null}
-        inicial={{ paciente_id: notaDe.paciente_id, turno_id: notaDe.id, fecha: notaDe.inicio.slice(0, 10) }}
-        onGuardado={() => void cargarTurnos()}
-        onCerrar={() => setNotaDe(null)}
+        notaId={nota.id}
+        inicial={nota.inicial}
+        onGuardado={() => {
+          setVersionDiario((v) => v + 1);
+          void cargarTurnos();
+        }}
+        onCerrar={() => setNota(null)}
       />
     )}
     </>

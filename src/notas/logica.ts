@@ -126,3 +126,27 @@ export function fragmento(n: NotaClinica, busqueda: string): Fragmento | null {
   partes[partes.length - 1] += sufijo;
   return { titulo: seccion.titulo, partes };
 }
+
+/**
+ * Parte el texto para resaltar las palabras buscadas: las partes impares son las
+ * coincidencias. Si las tildes no permiten ubicar las posiciones, devuelve el texto entero.
+ */
+export function resaltar(texto: string, busqueda: string): string[] {
+  const ts = terminos(busqueda);
+  const norm = normalizar(texto);
+  if (!ts.length || norm.length !== texto.length) return [texto];
+  const marcas: [number, number][] = [];
+  for (const t of ts) {
+    for (let i = norm.indexOf(t); i >= 0; i = norm.indexOf(t, i + t.length)) marcas.push([i, i + t.length]);
+  }
+  marcas.sort((a, b) => a[0] - b[0]);
+  const partes: string[] = [];
+  let pos = 0;
+  for (const [a, b] of marcas) {
+    if (a < pos) continue;
+    partes.push(texto.slice(pos, a), texto.slice(a, b));
+    pos = b;
+  }
+  partes.push(texto.slice(pos));
+  return partes;
+}

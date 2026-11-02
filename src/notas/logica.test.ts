@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NotaClinica } from "../tipos";
-import { cambiarPlantilla, filtrarNotas, fragmento, notaVacia, seccionesVacias } from "./logica";
+import { cambiarPlantilla, filtrarNotas, fragmento, notaVacia, resaltar, seccionesVacias } from "./logica";
 
 const nota = (id: number, paciente: string, textos: string[]): NotaClinica => ({
   id,
@@ -57,5 +57,10 @@ describe("notas clínicas", () => {
       { titulo: "Tareas", texto: "Registro diario" },
     ]);
     expect(notaVacia(seccionesVacias("primera"))).toBe(true);
+  });
+
+  it("resalta las palabras buscadas en el texto completo", () => {
+    expect(resaltar("Habló de la Reunión y otra reunion", "reunion")).toEqual(["Habló de la ", "Reunión", " y otra ", "reunion", ""]);
+    expect(resaltar("Sin búsqueda", " ")).toEqual(["Sin búsqueda"]);
   });
 });

@@ -6,9 +6,10 @@ Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
 ### Nuevo
 
-- Notas clínicas: una sección nueva en el menú para registrar la evolución de cada paciente sesión por sesión. Cada nota puede quedar vinculada a una sesión de la agenda.
+- Diario clínico de cada paciente: en la ficha del paciente, la pestaña "Diario clínico" muestra todas sus notas de la más nueva a la más vieja, con el texto completo, un buscador y el botón "Nueva nota". Cada nota puede quedar vinculada a una sesión de la agenda.
+- Sección "Notas clínicas" en el menú para buscar en las notas de todos los pacientes; desde cada resultado se abre la nota o el diario del paciente.
 - Plantillas para empezar la nota: "Sesión" (motivo de consulta, observaciones y tareas), "Primera entrevista" y "Nota libre". Si se cambia de plantilla no se pierde lo escrito.
-- Búsqueda en todas las notas, sin importar mayúsculas ni tildes, con filtro por paciente y las palabras encontradas resaltadas.
+- La búsqueda no distingue mayúsculas ni tildes y resalta las palabras encontradas.
 - Desde un turno de la agenda, el botón "Nota de la sesión" abre (o crea) la nota de ese turno. En la ficha del paciente, cada sesión tiene un ícono para ver o escribir su nota.
 - Cada vez que se modifica una nota se guarda la versión anterior, que se puede consultar desde la misma nota.
 - Las notas eliminadas van a la papelera durante 30 días y se pueden recuperar (o deshacer en el momento).

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Lock, NotebookPen, Search } from "lucide-react";
+import { BookOpen, Lock, NotebookPen, Search } from "lucide-react";
 import { obtenerDb } from "../db";
 import { listarNotas, listarPacientesConResumen } from "../repositorio";
-import type { NotaClinica, Paciente } from "../tipos";
+import type { NotaClinica, PacienteConResumen } from "../tipos";
+import FichaPaciente from "../pacientes/FichaPaciente";
 import { desdeIsoLocal } from "../fechas";
 import { textoError } from "../errores";
 import { alCambiarDatos } from "../papelera/deshacer";
@@ -16,10 +17,11 @@ type Abierta = { id: number | null } | null;
 
 export default function NotasClinicas() {
   const [notas, setNotas] = useState<NotaClinica[]>([]);
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
+  const [pacientes, setPacientes] = useState<PacienteConResumen[]>([]);
   const [pacienteId, setPacienteId] = useState<number | null>(null);
   const [busqueda, setBusqueda] = useState("");
   const [abierta, setAbierta] = useState<Abierta>(null);
+  const [diarioDe, setDiarioDe] = useState<PacienteConResumen | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargado, setCargado] = useState(false);
 
@@ -85,8 +87,8 @@ export default function NotasClinicas() {
       </div>
 
       <p className="nota nota-privacidad">
-        <Lock size={13} /> Las notas se guardan cifradas con tu contraseña, entran en las copias de seguridad y no se
-        incluyen en la exportación a Excel.
+        <Lock size={13} /> Cada nota queda en el diario clínico de su paciente (en la ficha del paciente). Acá podés buscar
+        en todas. Se guardan cifradas con tu contraseña y no se incluyen en la exportación a Excel.
       </p>
 
       {error && <p className="error">{error}</p>}
@@ -100,7 +102,7 @@ export default function NotasClinicas() {
           {visibles.map((n) => {
             const f = fragmento(n, busqueda);
             return (
-              <li key={n.id}>
+              <li key={n.id} className="nota-fila">
                 <button className="nota-item" onClick={() => setAbierta({ id: n.id })}>
                   <span className="nota-item-cabecera">
                     <strong>{n.paciente_nombre}</strong>
@@ -117,6 +119,14 @@ export default function NotasClinicas() {
                       {f.partes.map((p, i) => (i % 2 ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}
                     </span>
                   )}
+                </button>
+                <button
+                  className="boton-icono diario-boton"
+                  title={`Abrir el diario clínico de ${n.paciente_nombre}`}
+                  aria-label={`Diario clínico de ${n.paciente_nombre}`}
+                  onClick={() => setDiarioDe(pacientes.find((p) => p.id === n.paciente_id) ?? null)}
+                >
+                  <BookOpen size={17} />
                 </button>
               </li>
             );
@@ -136,6 +146,9 @@ export default function NotasClinicas() {
           onGuardado={cargar}
           onCerrar={() => setAbierta(null)}
         />
+      )}
+      {diarioDe && (
+        <FichaPaciente paciente={diarioDe} pestanaInicial="diario" onCambio={cargar} onCerrar={() => setDiarioDe(null)} />
       )}
     </div>
   );
