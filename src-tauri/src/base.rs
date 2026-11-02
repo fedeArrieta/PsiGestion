@@ -25,6 +25,7 @@ const MIGRACIONES: &[(i64, &str, &str)] = &[
     (2, "crear_gastos_y_objetivos", include_str!("../migrations/0002_gastos_y_objetivos.sql")),
     (3, "crear_configuracion", include_str!("../migrations/0003_configuracion.sql")),
     (4, "centavos_papelera_historial", include_str!("../migrations/0004_centavos_papelera_historial.sql")),
+    (5, "turnos_recurrentes", include_str!("../migrations/0005_turnos_recurrentes.sql")),
 ];
 
 fn migrador() -> Migrator {

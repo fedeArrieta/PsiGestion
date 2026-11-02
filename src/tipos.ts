@@ -33,6 +33,8 @@ export interface Turno {
   monto: number;
   pagado: number;
   notas: string | null;
+  /** Serie (turno recurrente) a la que pertenece, si hay. */
+  serie_id: number | null;
 }
 
 export interface TurnoConPaciente extends Turno {
@@ -61,4 +63,29 @@ export interface ResumenMes {
   gastos: number;
   /** Valor promedio de una sesión, para estimar cuántas faltan. 0 si no hay datos. */
   precio_promedio: number;
+}
+
+/** Turno recurrente: el patrón con el que se generan los turnos. */
+export interface Serie {
+  id: number;
+  paciente_id: number;
+  /** AAAA-MM-DD: primera fecha; define el día de la semana. */
+  desde: string;
+  /** HH:MM */
+  hora: string;
+  duracion_min: number;
+  frecuencia_semanas: number;
+  /** AAAA-MM-DD inclusive; null = sin fin. */
+  hasta: string | null;
+  generada_hasta: string;
+  notas: string | null;
+}
+
+/** Feriado o vacaciones: días en los que no se agendan turnos de las series. */
+export interface NoLaborable {
+  id: number;
+  desde: string;
+  hasta: string;
+  descripcion: string;
+  tipo: "feriado" | "vacaciones";
 }

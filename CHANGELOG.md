@@ -2,6 +2,16 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.4.0] - 2026-11-02
+
+### Nuevo
+
+- Turnos recurrentes: al crear un turno se puede elegir que se repita todas las semanas o cada 2, 3 o 4 semanas, sin fecha de fin o hasta una fecha. La app agenda los turnos de los próximos seis meses y va agregando los siguientes sola.
+- Antes de guardar, la ventana muestra cuántos turnos se van a agendar, cuáles caen en feriados o vacaciones y cuáles se superponen con otros turnos.
+- En un turno que es parte de una serie se elige si el cambio es "Solo este turno" o "Este y los siguientes" (día, hora, duración, frecuencia, paciente o notas). También se puede terminar la serie desde ese turno; los turnos que se quitan van a la papelera.
+- Feriados y vacaciones (botón en la Agenda): en esos días no se agendan los turnos recurrentes. Se pueden cargar de una vez los feriados nacionales del año. Si después se borra un período, sus turnos recurrentes vuelven a la agenda.
+- La agenda marca los días feriados o de vacaciones y muestra un ícono en los turnos recurrentes.
+
 ## [0.3.1] - 2026-11-02
 
 ### Correcciones
