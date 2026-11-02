@@ -923,7 +923,7 @@ button.indicador:hover:not(:disabled) {
 }
 
 .modal {
-  width: min(520px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1698,4 +1698,117 @@ button.enlace:hover:not(:disabled) {
 
 .acceso-tarjeta .logo {
   margin-bottom: 22px;
+}
+
+/* ---------- Turnos recurrentes, feriados y vacaciones ---------- */
+
+.turno-serie {
+  vertical-align: -1px;
+  margin-right: 3px;
+  opacity: 0.7;
+}
+
+.leyenda-agenda svg {
+  color: var(--texto-suave);
+}
+
+.nota-agenda {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radio);
+  background: var(--acento-suave);
+  color: var(--texto);
+  font-size: 0.9rem;
+  cursor: default;
+}
+
+.cabecera.no-laborable {
+  color: var(--calido);
+}
+
+.cabecera-libre {
+  display: block;
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.columna-dia.no-laborable {
+  background-color: var(--calido-suave);
+}
+
+.serie-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radio);
+  background: var(--acento-suave);
+}
+
+.serie-info p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.serie-info .icono {
+  color: var(--acento);
+}
+
+.serie-info .selector {
+  align-self: flex-start;
+}
+
+.serie-resumen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.serie-resumen p {
+  margin: 0;
+}
+
+.modal.no-laborables {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+}
+
+.lista-no-laborables {
+  overflow-y: auto;
+  min-height: 60px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.lista-no-laborables .tabla {
+  width: 100%;
+}
+
+.lista-no-laborables td.derecha {
+  width: 1%;
+  text-align: right;
+}
+
+.serie-info .selector button {
+  background: var(--panel);
+}
+
+.serie-info .selector button.activo {
+  background: var(--primario);
+  border-color: var(--primario);
+  color: #fff;
+}
+
+.modal .fila label.ancho {
+  width: 150px;
 }

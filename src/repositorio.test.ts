@@ -35,6 +35,17 @@ import {
   guardarConfiguracion,
   leerConfiguracion,
   verificarIntegridad,
+  agregarNoLaborable,
+  cargarFeriados,
+  crearSerie,
+  eliminarNoLaborable,
+  extenderSeries,
+  listarNoLaborables,
+  listarSeriesDePaciente,
+  modificarSerieDesde,
+  obtenerSerie,
+  previsualizarSerie,
+  terminarSerie,
   type Db,
 } from "./repositorio";
 
@@ -422,6 +433,147 @@ describe("repositorio", () => {
       expect(acciones.slice(3)).toEqual(["pagado", "eliminado"]);
       const [ultimo] = await listarHistorial(db, null, 1);
       expect(ultimo).toMatchObject({ paciente_nombre: "Ana", detalle: "Turno del 2026-11-03T10:00 eliminado" });
+    });
+  });
+
+  describe("turnos recurrentes", () => {
+    const HOY = "2026-11-02";
+    const fechas = async (pacienteId: number) =>
+      (await listarTurnosDePaciente(db, pacienteId)).map((t) => t.inicio).reverse();
+
+    it("crea la serie y agenda los turnos con el monto del paciente", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 25000 });
+      const n = await crearSerie(
+        db,
+        { paciente_id: ana, desde: "2026-11-03", hora: "10:00", duracion_min: 50, frecuencia_semanas: 1, hasta: "2026-11-24", notas: "Fijo" },
+        HOY,
+      );
+      expect(n).toBe(4);
+      const turnos = await listarTurnosDePaciente(db, ana);
+      expect(turnos.map((t) => t.inicio).reverse()).toEqual([
+        "2026-11-03T10:00",
+        "2026-11-10T10:00",
+        "2026-11-17T10:00",
+        "2026-11-24T10:00",
+      ]);
+      expect(turnos[0]).toMatchObject({ monto: 25000, estado: "programado", notas: "Fijo" });
+      expect(turnos.every((t) => t.serie_id === turnos[0].serie_id && t.serie_id != null)).toBe(true);
+      expect(await listarSeriesDePaciente(db, ana, HOY)).toHaveLength(1);
+    });
+
+    it("sin fecha de fin genera hasta el horizonte y después se extiende sola", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const n = await crearSerie(
+        db,
+        { paciente_id: ana, desde: "2026-11-03", hora: "10:00", duracion_min: 50, frecuencia_semanas: 2, hasta: null },
+        HOY,
+      );
+      expect(n).toBe(13); // 26 semanas, semana por medio
+      expect(await extenderSeries(db, HOY)).toBe(0);
+      // Un mes después aparecen los turnos que faltan, sin repetir.
+      expect(await extenderSeries(db, "2026-12-02")).toBe(3);
+      const f = await fechas(ana);
+      expect(new Set(f).size).toBe(f.length);
+      expect(f[f.length - 1]).toBe("2027-06-01T10:00");
+      // Pacientes dados de baja: sus series no se extienden.
+      await cambiarActivoPaciente(db, ana, false);
+      expect(await extenderSeries(db, "2027-03-01")).toBe(0);
+    });
+
+    it("saltea feriados y vacaciones, y avisa superposiciones", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const beto = await crearPaciente(db, { nombre: "Beto" });
+      await agregarNoLaborable(db, { desde: "2026-11-10", hasta: "2026-11-10", descripcion: "Feriado inventado" });
+      await crearTurno(db, { paciente_id: beto, inicio: "2026-11-17T10:30", duracion_min: 50 });
+      const d = { paciente_id: ana, desde: "2026-11-03", hora: "10:00", duracion_min: 50, frecuencia_semanas: 1, hasta: "2026-11-24" };
+      const vista = await previsualizarSerie(db, d, HOY);
+      expect(vista.agendar).toEqual(["2026-11-03", "2026-11-17", "2026-11-24"]);
+      expect(vista.salteadas).toEqual([{ fecha: "2026-11-10", motivo: "Feriado inventado" }]);
+      expect(vista.superpuestas).toEqual([{ fecha: "2026-11-17", paciente_nombre: "Beto", inicio: "2026-11-17T10:30" }]);
+      expect(await crearSerie(db, d, HOY)).toBe(3);
+    });
+
+    it("cargar vacaciones quita los turnos de la serie y borrarlas los devuelve", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      await crearSerie(
+        db,
+        { paciente_id: ana, desde: "2026-11-03", hora: "10:00", duracion_min: 50, frecuencia_semanas: 1, hasta: "2026-12-01" },
+        HOY,
+      );
+      const suelto = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-12T15:00", duracion_min: 50 });
+      const r = await agregarNoLaborable(db, { desde: "2026-11-09", hasta: "2026-11-20", descripcion: "Vacaciones" });
+      expect(r).toEqual({ quitados: 2, sueltos: 1 });
+      expect(await fechas(ana)).toEqual(["2026-11-03T10:00", "2026-11-12T15:00", "2026-11-24T10:00", "2026-12-01T10:00"]);
+      await eliminarTurno(db, suelto);
+
+      const [vac] = await listarNoLaborables(db);
+      // Si ya pasó parte del período, solo vuelven los turnos desde hoy.
+      expect(await eliminarNoLaborable(db, vac.id, "2026-11-15")).toBe(1);
+      expect(await fechas(ana)).toEqual(["2026-11-03T10:00", "2026-11-17T10:00", "2026-11-24T10:00", "2026-12-01T10:00"]);
+      expect(await listarNoLaborables(db)).toEqual([]);
+    });
+
+    it("carga los feriados sin duplicarlos", async () => {
+      const feriados = [
+        { desde: "2026-11-23", hasta: "2026-11-23", descripcion: "Soberanía" },
+        { desde: "2026-12-08", hasta: "2026-12-08", descripcion: "Inmaculada" },
+      ];
+      expect((await cargarFeriados(db, feriados)).agregados).toBe(2);
+      expect((await cargarFeriados(db, feriados)).agregados).toBe(0);
+      expect((await listarNoLaborables(db))[0]).toMatchObject({ tipo: "feriado" });
+    });
+
+    it("modifica la serie desde un turno en adelante sin tocar los anteriores ni los ya cancelados", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+      await crearSerie(
+        db,
+        { paciente_id: ana, desde: "2026-11-03", hora: "10:00", duracion_min: 50, frecuencia_semanas: 1, hasta: "2026-12-01" },
+        HOY,
+      );
+      const turnos = (await listarTurnosDePaciente(db, ana)).reverse();
+      const serieId = turnos[0].serie_id!;
+      await actualizarTurno(db, turnos[0].id, { paciente_id: ana, inicio: turnos[0].inicio, duracion_min: 50, estado: "realizado" });
+      // El 24 lo cancelaron a mano: se respeta.
+      await actualizarTurno(db, turnos[3].id, { paciente_id: ana, inicio: turnos[3].inicio, duracion_min: 50, estado: "cancelado" });
+
+      // Desde el 17 pasa a los miércoles a las 11.
+      const n = await modificarSerieDesde(
+        db,
+        serieId,
+        "2026-11-17",
+        { paciente_id: ana, desde: "2026-11-18", hora: "11:00", duracion_min: 50, frecuencia_semanas: 1, hasta: "2026-12-02" },
+        HOY,
+      );
+      expect(n).toBe(3);
+      expect(await fechas(ana)).toEqual([
+        "2026-11-03T10:00",
+        "2026-11-10T10:00",
+        "2026-11-18T11:00",
+        "2026-11-24T10:00",
+        "2026-11-25T11:00",
+        "2026-12-02T11:00",
+      ]);
+      expect(await obtenerSerie(db, serieId)).toMatchObject({ desde: "2026-11-18", hora: "11:00", hasta: "2026-12-02" });
+    });
+
+    it("terminar la serie manda los turnos siguientes a la papelera", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      await crearSerie(
+        db,
+        { paciente_id: ana, desde: "2026-11-03", hora: "10:00", duracion_min: 50, frecuencia_semanas: 1, hasta: null },
+        HOY,
+      );
+      const serieId = (await listarTurnosDePaciente(db, ana))[0].serie_id!;
+      expect(await terminarSerie(db, serieId, "2026-11-17")).toBe(24);
+      expect(await fechas(ana)).toEqual(["2026-11-03T10:00", "2026-11-10T10:00"]);
+      expect(await obtenerSerie(db, serieId)).toMatchObject({ hasta: "2026-11-16", generada_hasta: "2026-11-16" });
+      expect(await extenderSeries(db, "2027-01-01")).toBe(0);
+      expect(await listarSeriesDePaciente(db, ana, "2026-11-20")).toEqual([]);
+
+      // Un turno restaurado de la papelera vuelve con su serie.
+      const [elemento] = await listarPapelera(db);
+      await restaurarDePapelera(db, elemento.id);
+      expect((await listarTurnosDePaciente(db, ana)).filter((t) => t.serie_id === serieId)).toHaveLength(3);
     });
   });
 });

@@ -11,6 +11,7 @@ const turno = (id: number, hora: string, duracion_min = 50, estado: Turno["estad
   monto: 0,
   pagado: 0,
   notas: null,
+  serie_id: null,
 });
 
 describe("superposición de turnos", () => {

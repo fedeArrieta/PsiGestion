@@ -17,8 +17,14 @@ import {
   type LucideProps,
 } from "lucide-react";
 import { obtenerDb } from "./db";
-import { guardarConfiguracion, leerConfiguracion, vaciarPapeleraVencida, verificarIntegridad } from "./repositorio";
-import { aIsoLocal } from "./fechas";
+import {
+  extenderSeries,
+  guardarConfiguracion,
+  leerConfiguracion,
+  vaciarPapeleraVencida,
+  verificarIntegridad,
+} from "./repositorio";
+import { aFechaIso, aIsoLocal } from "./fechas";
 import Copias from "./copias/Copias";
 import { copiaAtrasada, diasSinCopia } from "./copias/logica";
 import { copiaAutomaticaSiCorresponde, leerConfigCopias, resultadoRestauracion } from "./copias/servicio";
@@ -258,6 +264,8 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         setAvisoIntegridad({ tipo: "error", texto: `No se pudo revisar la base de datos: ${textoError(e, "chequeo de integridad")}` });
       }
       await vaciarPapeleraVencida(await obtenerDb(), aIsoLocal(new Date())).catch(() => {});
+      // Turnos recurrentes: completar los que falten hasta el horizonte (para Inicio y Finanzas).
+      await extenderSeries(await obtenerDb(), aFechaIso(new Date())).catch(() => {});
       await revisarCopias();
       intervalo = window.setInterval(revisarCopias, REVISAR_COPIA_MS);
     })();

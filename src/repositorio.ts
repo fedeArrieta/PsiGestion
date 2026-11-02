@@ -1,12 +1,16 @@
 import type {
   EstadoTurno,
   Gasto,
+  NoLaborable,
   Paciente,
   PacienteConResumen,
   ResumenMes,
+  Serie,
   Turno,
   TurnoConPaciente,
 } from "./tipos";
+import { seSuperponen } from "./agenda/logica";
+import { fechasDeSerie, horizonte, periodoDe, repartirFechas, sumarDiasFecha } from "./agenda/series";
 
 /** Lo mínimo que se usa de la base. En la app es tauri-plugin-sql; en los tests, SQLite de Node. */
 export interface Db {
@@ -133,20 +137,23 @@ export async function actualizarTurno(db: Db, id: number, datos: DatosTurno): Pr
   );
 }
 
+/** INSERT que copia a la papelera los turnos que cumplen la condición (sobre "t"). */
+function turnosAPapelera(condicion: string): string {
+  return `INSERT INTO papelera (tipo, registro_id, datos, descripcion)
+          SELECT 'turno', t.id,
+                 json_object('id', t.id, 'paciente_id', t.paciente_id, 'inicio', t.inicio,
+                             'duracion_min', t.duracion_min, 'estado', t.estado, 'monto', t.monto,
+                             'pagado', t.pagado, 'notas', t.notas, 'creado_en', t.creado_en,
+                             'serie_id', t.serie_id),
+                 'Turno de ' || p.nombre || ' (' || t.inicio || ')'
+            FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
+           WHERE ${condicion}`;
+}
+
 /** Manda el turno a la papelera. Devuelve el id en la papelera, para poder deshacer. */
 export async function eliminarTurno(db: Db, id: number): Promise<number | null> {
   await db.transaccion([
-    {
-      sql: `INSERT INTO papelera (tipo, registro_id, datos, descripcion)
-            SELECT 'turno', t.id,
-                   json_object('id', t.id, 'paciente_id', t.paciente_id, 'inicio', t.inicio,
-                               'duracion_min', t.duracion_min, 'estado', t.estado, 'monto', t.monto,
-                               'pagado', t.pagado, 'notas', t.notas, 'creado_en', t.creado_en),
-                   'Turno de ' || p.nombre || ' (' || t.inicio || ')'
-              FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
-             WHERE t.id = $1`,
-      params: [id],
-    },
+    { sql: turnosAPapelera("t.id = $1"), params: [id] },
     { sql: "DELETE FROM turnos WHERE id = $1", params: [id] },
   ]);
   return ultimoEnPapelera(db, "turno", id);
@@ -214,6 +221,317 @@ export async function saldarPaciente(db: Db, pacienteId: number): Promise<number
     [pacienteId],
   );
   return r.rowsAffected;
+}
+
+// ---------- Turnos recurrentes (series) ----------
+
+export interface DatosSerie {
+  paciente_id: number;
+  /** AAAA-MM-DD: primera fecha; define el día de la semana. */
+  desde: string;
+  /** HH:MM */
+  hora: string;
+  duracion_min: number;
+  frecuencia_semanas: number;
+  /** AAAA-MM-DD inclusive; null = sin fin. */
+  hasta: string | null;
+  notas?: string | null;
+}
+
+export interface VistaPreviaSerie {
+  /** Fechas en las que se van a agendar turnos (hasta el horizonte). */
+  agendar: string[];
+  /** Fechas del patrón que caen en feriados o vacaciones. */
+  salteadas: { fecha: string; motivo: string }[];
+  /** Fechas que se pisan con otros turnos. */
+  superpuestas: { fecha: string; paciente_nombre: string; inicio: string }[];
+  /** Última fecha que se genera ahora; después la app sigue agregando sola. */
+  limite: string;
+}
+
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+function validarSerie(d: DatosSerie) {
+  if (!d.paciente_id) throw new Error("Elegí un paciente.");
+  if (!FECHA.test(d.desde) || !/^\d{2}:\d{2}$/.test(d.hora)) throw new Error("La fecha u hora no es válida.");
+  if (!(d.duracion_min > 0)) throw new Error("La duración tiene que ser mayor a cero.");
+  if (![1, 2, 3, 4].includes(d.frecuencia_semanas)) throw new Error("La frecuencia no es válida.");
+  if (d.hasta !== null && (!FECHA.test(d.hasta) || d.hasta < d.desde))
+    throw new Error("La fecha de fin tiene que ser posterior a la del primer turno.");
+}
+
+/** Hasta dónde generar: el horizonte desde hoy, pero al menos el primer turno. */
+function limiteDeGeneracion(d: DatosSerie, hoy: string): string {
+  const h = horizonte(hoy);
+  const limite = d.desde > h ? d.desde : h;
+  return d.hasta && d.hasta < limite ? d.hasta : limite;
+}
+
+export async function listarNoLaborables(db: Db, desde?: string, hasta?: string): Promise<NoLaborable[]> {
+  return db.select<NoLaborable[]>(
+    `SELECT * FROM no_laborables
+      WHERE ($1 IS NULL OR hasta >= $1) AND ($2 IS NULL OR desde <= $2)
+      ORDER BY desde, id`,
+    [desde ?? null, hasta ?? null],
+  );
+}
+
+/** Fechas (AAAA-MM-DD) en las que la serie ya tiene un turno que se conserva. */
+async function fechasOcupadasDeSerie(db: Db, serieId: number, excluirProgramadosDesde?: string): Promise<Set<string>> {
+  const filas = await db.select<{ fecha: string }[]>(
+    `SELECT DISTINCT substr(inicio, 1, 10) AS fecha FROM turnos
+      WHERE serie_id = $1 AND ($2 IS NULL OR estado <> 'programado' OR substr(inicio, 1, 10) < $2)`,
+    [serieId, excluirProgramadosDesde ?? null],
+  );
+  return new Set(filas.map((f) => f.fecha));
+}
+
+/** INSERTs de los turnos de una serie. serie: id o una subconsulta SQL que lo devuelve. */
+function insertarTurnosDeSerie(serie: number | string, d: DatosSerie, fechas: string[]): Sentencia[] {
+  const idSerie = typeof serie === "number" ? "$5" : `(${serie})`;
+  return fechas.map((fecha) => ({
+    sql: `INSERT INTO turnos (paciente_id, inicio, duracion_min, estado, notas, monto, serie_id)
+          VALUES ($1, $2, $3, 'programado', $4, (SELECT monto_sesion FROM pacientes WHERE id = $1), ${idSerie})`,
+    params: [d.paciente_id, `${fecha}T${d.hora}`, d.duracion_min, vacioANull(d.notas), ...(typeof serie === "number" ? [serie] : [])],
+  }));
+}
+
+/**
+ * Qué turnos se agendarían con esta serie: cuáles se saltean por feriados o
+ * vacaciones y cuáles se pisan con otros turnos. excluirSerie: al modificar una
+ * serie, sus propios turnos no cuentan como superposición.
+ */
+export async function previsualizarSerie(
+  db: Db,
+  d: DatosSerie,
+  hoy: string,
+  excluirSerie?: number,
+): Promise<VistaPreviaSerie> {
+  validarSerie(d);
+  const limite = limiteDeGeneracion(d, hoy);
+  const periodos = await listarNoLaborables(db, d.desde, limite);
+  const { agendar, salteadas } = repartirFechas(fechasDeSerie(d, d.desde, limite), periodos);
+  const otros = await db.select<(Pick<Turno, "inicio" | "duracion_min" | "serie_id"> & { paciente_nombre: string })[]>(
+    `SELECT t.inicio, t.duracion_min, t.serie_id, p.nombre AS paciente_nombre
+       FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
+      WHERE t.estado <> 'cancelado' AND t.inicio >= $1 AND t.inicio < $2
+        AND ($3 IS NULL OR t.serie_id IS NULL OR t.serie_id <> $3)`,
+    [d.desde, sumarDiasFecha(limite, 1), excluirSerie ?? null],
+  );
+  const porFecha = new Map<string, typeof otros>();
+  for (const t of otros) {
+    const f = t.inicio.slice(0, 10);
+    porFecha.set(f, [...(porFecha.get(f) ?? []), t]);
+  }
+  const superpuestas: VistaPreviaSerie["superpuestas"] = [];
+  for (const fecha of agendar) {
+    const nuevo = { inicio: `${fecha}T${d.hora}`, duracion_min: d.duracion_min };
+    for (const t of porFecha.get(fecha) ?? []) {
+      if (seSuperponen(nuevo, t)) superpuestas.push({ fecha, paciente_nombre: t.paciente_nombre, inicio: t.inicio });
+    }
+  }
+  return { agendar, salteadas, superpuestas, limite };
+}
+
+/** Crea la serie y agenda sus turnos hasta el horizonte. Devuelve cuántos turnos se crearon. */
+export async function crearSerie(db: Db, d: DatosSerie, hoy: string): Promise<number> {
+  const { agendar, limite } = await previsualizarSerie(db, d, hoy);
+  await db.transaccion([
+    {
+      sql: `INSERT INTO series (paciente_id, desde, hora, duracion_min, frecuencia_semanas, hasta, generada_hasta, notas)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      params: [d.paciente_id, d.desde, d.hora, d.duracion_min, d.frecuencia_semanas, d.hasta, limite, vacioANull(d.notas)],
+    },
+    // Dentro de la transacción la serie recién creada es la de id más alto.
+    ...insertarTurnosDeSerie("SELECT MAX(id) FROM series", d, agendar),
+  ]);
+  return agendar.length;
+}
+
+export async function obtenerSerie(db: Db, id: number): Promise<Serie | null> {
+  const [serie] = await db.select<Serie[]>("SELECT * FROM series WHERE id = $1", [id]);
+  return serie ?? null;
+}
+
+/** Series vigentes de un paciente (las que todavía tienen turnos por delante). */
+export function listarSeriesDePaciente(db: Db, pacienteId: number, hoy: string): Promise<Serie[]> {
+  return db.select<Serie[]>(
+    "SELECT * FROM series WHERE paciente_id = $1 AND (hasta IS NULL OR hasta >= $2) ORDER BY desde, id",
+    [pacienteId, hoy],
+  );
+}
+
+/**
+ * Cambia la serie desde la fecha del turno elegido en adelante: borra sus turnos
+ * programados desde ahí y los vuelve a generar con los datos nuevos. Los turnos
+ * anteriores, y los ya realizados, cancelados o ausentes, no se tocan.
+ */
+export async function modificarSerieDesde(db: Db, serieId: number, fechaTurno: string, d: DatosSerie, hoy: string): Promise<number> {
+  const corte = fechaTurno < d.desde ? fechaTurno : d.desde;
+  const { agendar, limite } = await previsualizarSerie(db, d, hoy, serieId);
+  const ocupadas = await fechasOcupadasDeSerie(db, serieId, corte);
+  const fechas = agendar.filter((f) => !ocupadas.has(f));
+  await db.transaccion([
+    {
+      sql: "DELETE FROM turnos WHERE serie_id = $1 AND estado = 'programado' AND substr(inicio, 1, 10) >= $2",
+      params: [serieId, corte],
+    },
+    {
+      sql: `UPDATE series SET paciente_id = $1, desde = $2, hora = $3, duracion_min = $4, frecuencia_semanas = $5,
+                              hasta = $6, generada_hasta = $7, notas = $8
+             WHERE id = $9`,
+      params: [d.paciente_id, d.desde, d.hora, d.duracion_min, d.frecuencia_semanas, d.hasta, limite, vacioANull(d.notas), serieId],
+    },
+    ...insertarTurnosDeSerie(serieId, d, fechas),
+  ]);
+  return fechas.length;
+}
+
+/**
+ * Termina la serie: desde esa fecha no hay más turnos. Los turnos programados
+ * desde ahí van a la papelera. Devuelve cuántos se quitaron.
+ */
+export async function terminarSerie(db: Db, serieId: number, desdeFecha: string): Promise<number> {
+  const condicion = "t.serie_id = $1 AND t.estado = 'programado' AND substr(t.inicio, 1, 10) >= $2";
+  const [{ n }] = await db.select<{ n: number }[]>(`SELECT COUNT(*) AS n FROM turnos t WHERE ${condicion}`, [
+    serieId,
+    desdeFecha,
+  ]);
+  const ultimo = sumarDiasFecha(desdeFecha, -1);
+  await db.transaccion([
+    { sql: turnosAPapelera(condicion), params: [serieId, desdeFecha] },
+    { sql: `DELETE FROM turnos AS t WHERE ${condicion}`, params: [serieId, desdeFecha] },
+    {
+      sql: "UPDATE series SET hasta = $2, generada_hasta = MIN(generada_hasta, $2) WHERE id = $1",
+      params: [serieId, ultimo],
+    },
+  ]);
+  return n;
+}
+
+/**
+ * Agrega los turnos que faltan para que las series lleguen al horizonte (o a la
+ * fecha indicada, si es más lejana). Se llama al abrir la app y la agenda.
+ * Las series de pacientes dados de baja no se extienden.
+ */
+export function extenderSeries(db: Db, hoy: string, hastaFecha?: string): Promise<number> {
+  // De a una por vez: si dos pantallas lo piden juntas, la segunda ve lo que generó la primera.
+  const r = extensionEnCurso.then(() => extenderSeriesAhora(db, hoy, hastaFecha));
+  extensionEnCurso = r.catch(() => 0);
+  return r;
+}
+
+let extensionEnCurso: Promise<unknown> = Promise.resolve();
+
+async function extenderSeriesAhora(db: Db, hoy: string, hastaFecha?: string): Promise<number> {
+  const h = horizonte(hoy);
+  const limite = hastaFecha && hastaFecha > h ? hastaFecha : h;
+  const series = await db.select<Serie[]>(
+    `SELECT s.* FROM series s JOIN pacientes p ON p.id = s.paciente_id
+      WHERE p.activo = 1 AND s.generada_hasta < $1 AND (s.hasta IS NULL OR s.generada_hasta < s.hasta)`,
+    [limite],
+  );
+  if (!series.length) return 0;
+  const periodos = await listarNoLaborables(db, hoy, limite);
+  const sentencias: Sentencia[] = [];
+  let creados = 0;
+  for (const s of series) {
+    const fin = s.hasta && s.hasta < limite ? s.hasta : limite;
+    const { agendar } = repartirFechas(fechasDeSerie(s, sumarDiasFecha(s.generada_hasta, 1), fin), periodos);
+    sentencias.push(...insertarTurnosDeSerie(s.id, s, agendar), {
+      sql: "UPDATE series SET generada_hasta = $1 WHERE id = $2",
+      params: [fin, s.id],
+    });
+    creados += agendar.length;
+  }
+  await db.transaccion(sentencias);
+  return creados;
+}
+
+// ---------- Feriados y vacaciones ----------
+
+export interface DatosNoLaborable {
+  desde: string;
+  hasta: string;
+  descripcion: string;
+  tipo?: "feriado" | "vacaciones";
+}
+
+export interface ResultadoNoLaborable {
+  /** Turnos de series que se quitaron de esas fechas. */
+  quitados: number;
+  /** Turnos sueltos (no recurrentes) que quedan en esas fechas: conviene revisarlos. */
+  sueltos: number;
+}
+
+const SERIE_EN_RANGO = "serie_id IS NOT NULL AND estado = 'programado' AND substr(inicio, 1, 10) BETWEEN $1 AND $2";
+const SUELTOS_EN_RANGO =
+  "(serie_id IS NULL OR estado <> 'programado') AND estado <> 'cancelado' AND substr(inicio, 1, 10) BETWEEN $1 AND $2";
+
+/**
+ * Guarda el feriado o las vacaciones y quita los turnos programados de las
+ * series en esas fechas (se generaron solos; si se borra el período, vuelven).
+ */
+export async function agregarNoLaborable(db: Db, d: DatosNoLaborable): Promise<ResultadoNoLaborable> {
+  const descripcion = d.descripcion.trim();
+  if (!FECHA.test(d.desde) || !FECHA.test(d.hasta)) throw new Error("Las fechas no son válidas.");
+  if (d.hasta < d.desde) throw new Error("La fecha de fin tiene que ser igual o posterior a la de inicio.");
+  if (!descripcion) throw new Error("Escribí una descripción (por ejemplo, Vacaciones de verano).");
+  const [{ quitados, sueltos }] = await db.select<ResultadoNoLaborable[]>(
+    `SELECT (SELECT COUNT(*) FROM turnos WHERE ${SERIE_EN_RANGO}) AS quitados,
+            (SELECT COUNT(*) FROM turnos WHERE ${SUELTOS_EN_RANGO}) AS sueltos`,
+    [d.desde, d.hasta],
+  );
+  await db.transaccion([
+    {
+      sql: "INSERT INTO no_laborables (desde, hasta, descripcion, tipo) VALUES ($1, $2, $3, $4)",
+      params: [d.desde, d.hasta, descripcion, d.tipo ?? "vacaciones"],
+    },
+    { sql: `DELETE FROM turnos WHERE ${SERIE_EN_RANGO}`, params: [d.desde, d.hasta] },
+  ]);
+  return { quitados, sueltos };
+}
+
+/** Carga los feriados indicados que todavía no estén (no pisa los días ya cargados). */
+export async function cargarFeriados(db: Db, feriados: DatosNoLaborable[]): Promise<ResultadoNoLaborable & { agregados: number }> {
+  const existentes = await listarNoLaborables(db);
+  const total = { agregados: 0, quitados: 0, sueltos: 0 };
+  for (const f of feriados) {
+    if (periodoDe(f.desde, existentes)) continue;
+    const r = await agregarNoLaborable(db, { ...f, tipo: "feriado" });
+    total.agregados++;
+    total.quitados += r.quitados;
+    total.sueltos += r.sueltos;
+  }
+  return total;
+}
+
+/**
+ * Borra el feriado o las vacaciones y vuelve a agendar, desde hoy, los turnos de
+ * las series que se habían salteado por eso. Devuelve cuántos turnos volvieron.
+ */
+export async function eliminarNoLaborable(db: Db, id: number, hoy: string): Promise<number> {
+  const [periodo] = await db.select<NoLaborable[]>("SELECT * FROM no_laborables WHERE id = $1", [id]);
+  if (!periodo) return 0;
+  const desde = periodo.desde > hoy ? periodo.desde : hoy;
+  const otros = (await listarNoLaborables(db, desde, periodo.hasta)).filter((p) => p.id !== id);
+  const series = await db.select<Serie[]>(
+    `SELECT s.* FROM series s JOIN pacientes p ON p.id = s.paciente_id
+      WHERE p.activo = 1 AND s.desde <= $2 AND s.generada_hasta >= $1 AND (s.hasta IS NULL OR s.hasta >= $1)`,
+    [desde, periodo.hasta],
+  );
+  const sentencias: Sentencia[] = [{ sql: "DELETE FROM no_laborables WHERE id = $1", params: [id] }];
+  let vuelven = 0;
+  for (const s of series) {
+    const fin = s.generada_hasta < periodo.hasta ? s.generada_hasta : periodo.hasta;
+    const ocupadas = await fechasOcupadasDeSerie(db, s.id);
+    const { agendar } = repartirFechas(fechasDeSerie(s, desde, fin), otros);
+    const fechas = agendar.filter((f) => !ocupadas.has(f));
+    sentencias.push(...insertarTurnosDeSerie(s.id, s, fechas));
+    vuelven += fechas.length;
+  }
+  await db.transaccion(sentencias);
+  return vuelven;
 }
 
 // ---------- Finanzas ----------
@@ -445,10 +763,11 @@ export async function restaurarDePapelera(db: Db, id: number): Promise<void> {
   if (!elemento) throw new Error("Ese elemento ya no está en la papelera.");
   const insertar =
     elemento.tipo === "turno"
-      ? `INSERT INTO turnos (id, paciente_id, inicio, duracion_min, estado, monto, pagado, notas, creado_en)
+      ? `INSERT INTO turnos (id, paciente_id, inicio, duracion_min, estado, monto, pagado, notas, creado_en, serie_id)
          SELECT json_extract(datos, '$.id'), json_extract(datos, '$.paciente_id'), json_extract(datos, '$.inicio'),
                 json_extract(datos, '$.duracion_min'), json_extract(datos, '$.estado'), json_extract(datos, '$.monto'),
-                json_extract(datos, '$.pagado'), json_extract(datos, '$.notas'), json_extract(datos, '$.creado_en')
+                json_extract(datos, '$.pagado'), json_extract(datos, '$.notas'), json_extract(datos, '$.creado_en'),
+                (SELECT s.id FROM series s WHERE s.id = json_extract(datos, '$.serie_id'))
            FROM papelera WHERE id = $1`
       : `INSERT INTO gastos (id, mes, descripcion, monto, fijo, creado_en)
          SELECT json_extract(datos, '$.id'), json_extract(datos, '$.mes'), json_extract(datos, '$.descripcion'),

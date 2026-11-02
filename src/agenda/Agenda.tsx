@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarPlus, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarOff, CalendarPlus, ChevronLeft, ChevronRight, Repeat } from "lucide-react";
 import { obtenerDb } from "../db";
 import {
   actualizarTurno,
   crearPaciente,
+  crearSerie,
   crearTurno,
   eliminarTurno,
+  extenderSeries,
+  listarNoLaborables,
   listarPacientes,
   listarTurnos,
+  modificarSerieDesde,
+  obtenerSerie,
+  previsualizarSerie,
+  terminarSerie,
+  type DatosSerie,
 } from "../repositorio";
-import type { Paciente, TurnoConPaciente } from "../tipos";
+import type { NoLaborable, Paciente, TurnoConPaciente } from "../tipos";
 import {
   aFechaIso,
   aIsoLocal,
@@ -27,6 +35,8 @@ import {
 import { distribuirEnColumnas } from "./logica";
 import { ALTO_HORA, DURACION_PREDETERMINADA, HORA_FIN, HORA_INICIO } from "./config";
 import TurnoModal, { type ResultadoModal } from "./TurnoModal";
+import NoLaborablesModal from "./NoLaborablesModal";
+import { periodoDe } from "./series";
 import { textoError } from "../errores";
 import { alCambiarDatos, ofrecerDeshacer } from "../papelera/deshacer";
 
@@ -38,6 +48,11 @@ const turnosDeFecha = async (fecha: string) => {
   return listarTurnos(await obtenerDb(), aIsoLocal(dia), aIsoLocal(sumarDias(dia, 1)));
 };
 
+const hoyIso = () => aFechaIso(new Date());
+const cargarSerie = async (id: number) => obtenerSerie(await obtenerDb(), id);
+const previsualizar = async (datos: DatosSerie, excluirSerie?: number) =>
+  previsualizarSerie(await obtenerDb(), datos, hoyIso(), excluirSerie);
+
 /** abrirNuevo: abre la ventana de turno nuevo al entrar (desde "Nuevo turno" en Inicio). */
 export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean }) {
   const [vista, setVista] = useState<Vista>("semana");
@@ -46,6 +61,9 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [edicion, setEdicion] = useState<Edicion | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [noLaborables, setNoLaborables] = useState<NoLaborable[]>([]);
+  const [verNoLaborables, setVerNoLaborables] = useState(false);
 
   const dias = useMemo(() => {
     if (vista === "dia") return [referencia];
@@ -56,11 +74,19 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
   const cargar = useCallback(async () => {
     try {
       const db = await obtenerDb();
+      const ultimo = aFechaIso(dias[dias.length - 1]);
+      // Los turnos recurrentes se generan hasta unos meses adelante: si se mira más lejos, se completan.
+      await extenderSeries(db, hoyIso(), ultimo);
       const desde = aIsoLocal(dias[0]);
       const hasta = aIsoLocal(sumarDias(dias[dias.length - 1], 1));
-      const [t, p] = await Promise.all([listarTurnos(db, desde, hasta), listarPacientes(db)]);
+      const [t, p, nl] = await Promise.all([
+        listarTurnos(db, desde, hasta),
+        listarPacientes(db),
+        listarNoLaborables(db, aFechaIso(dias[0]), ultimo),
+      ]);
       setTurnos(t);
       setPacientes(p);
+      setNoLaborables(nl);
       setError(null);
     } catch (e) {
       setError(textoError(e, "cargar agenda"));
@@ -72,6 +98,12 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
   }, [cargar]);
 
   useEffect(() => alCambiarDatos(cargar), [cargar]);
+
+  useEffect(() => {
+    if (!mensaje) return;
+    const t = window.setTimeout(() => setMensaje(null), 10_000);
+    return () => window.clearTimeout(t);
+  }, [mensaje]);
 
   // La grilla va de HORA_INICIO a HORA_FIN, pero se agranda si hay turnos fuera de ese horario.
   const [horaDesde, horaHasta] = useMemo(() => {
@@ -109,15 +141,42 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
       notas: r.notas,
       pagado: r.pagado,
     };
-    if (edicion?.turno) await actualizarTurno(db, edicion.turno.id, datos);
-    else await crearTurno(db, datos);
+    const serie = (): DatosSerie => ({
+      paciente_id: pacienteId!,
+      desde: r.inicio.slice(0, 10),
+      hora: r.inicio.slice(11, 16),
+      duracion_min: r.duracion_min,
+      frecuencia_semanas: r.repeticion!.frecuencia_semanas,
+      hasta: r.repeticion!.hasta,
+      notas: r.notas,
+    });
+    const turno = edicion?.turno;
+    let aviso: string | null = null;
+    if (turno && r.alcance === "serie" && turno.serie_id && r.repeticion) {
+      const n = await modificarSerieDesde(db, turno.serie_id, turno.inicio.slice(0, 10), serie(), hoyIso());
+      aviso = `Se actualizó la serie: ${n === 1 ? "1 turno" : `${n} turnos`} desde el ${textoDiaLargo(desdeIsoLocal(r.inicio))}.`;
+    } else if (turno) await actualizarTurno(db, turno.id, datos);
+    else if (r.repeticion) {
+      const n = await crearSerie(db, serie(), hoyIso());
+      aviso = `Se agendaron ${n === 1 ? "1 turno" : `${n} turnos`} recurrentes.`;
+    } else await crearTurno(db, datos);
     setEdicion(null);
+    setMensaje(aviso);
     await cargar();
   }
 
   async function eliminar(id: number) {
     ofrecerDeshacer("Se eliminó el turno.", await eliminarTurno(await obtenerDb(), id));
     setEdicion(null);
+    await cargar();
+  }
+
+  async function terminar(serieId: number, desdeFecha: string) {
+    const n = await terminarSerie(await obtenerDb(), serieId, desdeFecha);
+    setEdicion(null);
+    setMensaje(
+      `Se terminó la serie. ${n === 1 ? "Se quitó 1 turno" : `Se quitaron ${n} turnos`} (quedan en la papelera).`,
+    );
     await cargar();
   }
 
@@ -158,6 +217,9 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
           <button className={vista === "dia" ? "activo" : ""} onClick={() => setVista("dia")}>Día</button>
           <button className={vista === "semana" ? "activo" : ""} onClick={() => setVista("semana")}>Semana</button>
         </div>
+        <button onClick={() => setVerNoLaborables(true)} title="Días en los que no se agendan los turnos recurrentes">
+          <CalendarOff size={18} className="icono" /> Feriados y vacaciones
+        </button>
         <button className="primario" onClick={nuevoTurno}>
           <CalendarPlus size={18} className="icono" /> Nuevo turno
         </button>
@@ -169,17 +231,31 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
         <span><span className="punto pago" /> Pagado</span>
         <span><span className="punto atencion" /> Ausente</span>
         <span><span className="punto" /> Cancelado</span>
+        <span><Repeat size={12} /> Turno recurrente</span>
       </div>
 
       {error && <p className="error">{error}</p>}
+      {mensaje && (
+        <p className="nota-agenda" onClick={() => setMensaje(null)} title="Clic para ocultar">
+          {mensaje}
+        </p>
+      )}
 
       <div className="grilla" style={{ gridTemplateColumns: `56px repeat(${dias.length}, 1fr)` }}>
         <div className="esquina" />
-        {dias.map((d) => (
-          <div key={d.toISOString()} className={mismoDia(d, hoy) ? "cabecera hoy" : "cabecera"}>
-            {textoDia(d)}
-          </div>
-        ))}
+        {dias.map((d) => {
+          const libre = periodoDe(aFechaIso(d), noLaborables);
+          return (
+            <div
+              key={d.toISOString()}
+              className={`cabecera${mismoDia(d, hoy) ? " hoy" : ""}${libre ? " no-laborable" : ""}`}
+              title={libre?.descripcion}
+            >
+              {textoDia(d)}
+              {libre && <span className="cabecera-libre">{libre.descripcion}</span>}
+            </div>
+          );
+        })}
 
         <div className="horas" style={{ height: horas.length * ALTO_HORA }}>
           {horas.map((h) => (
@@ -195,7 +271,7 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
           return (
             <div
               key={fecha}
-              className="columna-dia"
+              className={periodoDe(fecha, noLaborables) ? "columna-dia no-laborable" : "columna-dia"}
               style={{ height: horas.length * ALTO_HORA, backgroundSize: `100% ${ALTO_HORA / 2}px` }}
               onClick={(e) => clicEnDia(d, e)}
             >
@@ -218,6 +294,7 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
                       setEdicion({ turno, inicioSugerido: turno.inicio });
                     }}
                   >
+                    {turno.serie_id ? <Repeat size={11} className="turno-serie" aria-label="Recurrente" /> : null}
                     <span className="turno-hora">{horaTexto(turno.inicio)}</span>{" "}
                     <span className="turno-nombre">{turno.paciente_nombre}</span>
                     {turno.pagado ? <span className="turno-pagado" title="Pagado">$</span> : null}
@@ -236,9 +313,19 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
           pacientes={pacientes}
           turnosDeFecha={turnosDeFecha}
           duracionPredeterminada={DURACION_PREDETERMINADA}
+          cargarSerie={cargarSerie}
+          previsualizar={previsualizar}
           onGuardar={guardar}
           onEliminar={eliminar}
+          onTerminarSerie={terminar}
           onCerrar={() => setEdicion(null)}
+        />
+      )}
+
+      {verNoLaborables && (
+        <NoLaborablesModal
+          onCambio={cargar}
+          onCerrar={() => setVerNoLaborables(false)}
         />
       )}
     </div>

@@ -8,7 +8,7 @@ describe("exportación", () => {
       turnos: [
         {
           id: 1, paciente_id: 1, paciente_nombre: "Ana", inicio: "2026-10-31T09:00", duracion_min: 50,
-          estado: "realizado", monto: 25000, pagado: 0, notas: null,
+          estado: "realizado", monto: 25000, pagado: 0, notas: null, serie_id: null,
         },
       ],
       gastos: [{ id: 1, mes: "2026-10", descripcion: "Alquiler", monto: 100000, fijo: 1 }],
