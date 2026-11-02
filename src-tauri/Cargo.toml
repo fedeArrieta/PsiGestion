@@ -1,6 +1,6 @@
 [package]
 name = "psigestion"
-version = "0.3.0"
+version = "0.3.1"
 description = "Agenda y finanzas para psicólogos"
 authors = ["Federico Arrieta"]
 edition = "2024"
@@ -38,6 +38,10 @@ log = "0.4"
 rust_xlsxwriter = "0.102.0"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+
+# Para cerrar la app en el acto al instalar una actualización (ver src/actualizar.rs).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

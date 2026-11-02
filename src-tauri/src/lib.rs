@@ -1,3 +1,4 @@
+mod actualizar;
 mod base;
 mod datos;
 mod exportar;
@@ -44,6 +45,7 @@ pub fn run() {
             seguridad::importar_llave,
             registro::abrir_carpeta_registros,
             exportar::exportar_excel,
+            actualizar::instalar_actualizacion,
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar PsiGestion");
