@@ -1,6 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { obtenerDb } from "../db";
 import { guardarConfiguracion, leerConfiguracion } from "../repositorio";
 import { hacerCopia } from "../copias/servicio";
@@ -47,20 +47,29 @@ export async function omitirVersion(version: string): Promise<void> {
   await guardarConfiguracion(await obtenerDb(), "actualizacion_omitida", version);
 }
 
-/** Hace una copia de seguridad, descarga e instala la versión nueva y reinicia la app. */
-export async function instalarActualizacion(update: Update, onProgreso: (porcentaje: number | null) => void) {
+type ProgresoInstalacion =
+  | { evento: "inicio"; datos: { total: number | null } }
+  | { evento: "avance"; datos: { bytes: number } }
+  | { evento: "instalando" };
+
+/**
+ * Hace una copia de seguridad, descarga e instala la versión nueva. La descarga (con verificación
+ * de firma) y el cierre de la app los hace Rust (src-tauri/src/actualizar.rs): cierra la base,
+ * lanza el instalador y termina el proceso en el acto, así el instalador nunca encuentra la app abierta.
+ */
+export async function instalarActualizacion(_update: Update, onProgreso: (porcentaje: number | null) => void) {
   await hacerCopia("previa");
   let total = 0;
   let bajado = 0;
-  await update.downloadAndInstall((evento) => {
-    if (evento.event === "Started") total = evento.data.contentLength ?? 0;
-    if (evento.event === "Progress") {
-      bajado += evento.data.chunkLength;
+  const progreso = new Channel<ProgresoInstalacion>();
+  progreso.onmessage = (m) => {
+    if (m.evento === "inicio") total = m.datos.total ?? 0;
+    if (m.evento === "avance") {
+      bajado += m.datos.bytes;
       onProgreso(total ? Math.min(100, Math.round((bajado / total) * 100)) : null);
     }
-  });
-  // En Windows el instalador cierra la app; en otros sistemas hay que reiniciarla.
-  await relaunch();
+  };
+  await invoke("instalar_actualizacion", { progreso });
 }
 
 export async function leerVersionVista(): Promise<string | null> {
