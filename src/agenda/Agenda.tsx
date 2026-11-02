@@ -36,6 +36,7 @@ import { distribuirEnColumnas } from "./logica";
 import { ALTO_HORA, DURACION_PREDETERMINADA, HORA_FIN, HORA_INICIO } from "./config";
 import TurnoModal, { type ResultadoModal } from "./TurnoModal";
 import NoLaborablesModal from "./NoLaborablesModal";
+import NotaModal from "../notas/NotaModal";
 import { periodoDe } from "./series";
 import { textoError } from "../errores";
 import { alCambiarDatos, ofrecerDeshacer } from "../papelera/deshacer";
@@ -60,6 +61,7 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
   const [turnos, setTurnos] = useState<TurnoConPaciente[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [edicion, setEdicion] = useState<Edicion | null>(null);
+  const [notaDe, setNotaDe] = useState<TurnoConPaciente | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [noLaborables, setNoLaborables] = useState<NoLaborable[]>([]);
@@ -319,6 +321,15 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
           onEliminar={eliminar}
           onTerminarSerie={terminar}
           onCerrar={() => setEdicion(null)}
+          onNota={edicion.turno ? () => setNotaDe(edicion.turno) : undefined}
+        />
+      )}
+
+      {notaDe && (
+        <NotaModal
+          notaId={null}
+          inicial={{ paciente_id: notaDe.paciente_id, turno_id: notaDe.id, fecha: notaDe.inicio.slice(0, 10) }}
+          onCerrar={() => setNotaDe(null)}
         />
       )}
 

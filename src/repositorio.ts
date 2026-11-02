@@ -2,12 +2,15 @@ import type {
   EstadoTurno,
   Gasto,
   NoLaborable,
+  NotaClinica,
   Paciente,
   PacienteConResumen,
   ResumenMes,
   Serie,
   Turno,
   TurnoConPaciente,
+  SeccionNota,
+  VersionNota,
 } from "./tipos";
 import { seSuperponen } from "./agenda/logica";
 import { fechasDeSerie, horizonte, periodoDe, repartirFechas, sumarDiasFecha } from "./agenda/series";
@@ -725,7 +728,7 @@ export async function datosParaExportar(db: Db, mes: string | null): Promise<Dat
 
 export interface ElementoPapelera {
   id: number;
-  tipo: "turno" | "gasto";
+  tipo: "turno" | "gasto" | "nota";
   descripcion: string;
   eliminado_en: string;
 }
@@ -762,7 +765,16 @@ export async function restaurarDePapelera(db: Db, id: number): Promise<void> {
   const [elemento] = await db.select<{ tipo: string }[]>("SELECT tipo FROM papelera WHERE id = $1", [id]);
   if (!elemento) throw new Error("Ese elemento ya no está en la papelera.");
   const insertar =
-    elemento.tipo === "turno"
+    elemento.tipo === "nota"
+      ? // Si mientras tanto esa sesión tiene otra nota, la restaurada queda sin vincular.
+        `INSERT INTO notas_clinicas (id, paciente_id, turno_id, fecha, plantilla, secciones, creado_en, modificado_en)
+         SELECT json_extract(datos, '$.id'), json_extract(datos, '$.paciente_id'),
+                CASE WHEN EXISTS (SELECT 1 FROM notas_clinicas n WHERE n.turno_id = json_extract(datos, '$.turno_id'))
+                     THEN NULL ELSE json_extract(datos, '$.turno_id') END,
+                json_extract(datos, '$.fecha'), json_extract(datos, '$.plantilla'), json_extract(datos, '$.secciones'),
+                json_extract(datos, '$.creado_en'), json_extract(datos, '$.modificado_en')
+           FROM papelera WHERE id = $1`
+      : elemento.tipo === "turno"
       ? `INSERT INTO turnos (id, paciente_id, inicio, duracion_min, estado, monto, pagado, notas, creado_en, serie_id)
          SELECT json_extract(datos, '$.id'), json_extract(datos, '$.paciente_id'), json_extract(datos, '$.inicio'),
                 json_extract(datos, '$.duracion_min'), json_extract(datos, '$.estado'), json_extract(datos, '$.monto'),
@@ -788,8 +800,16 @@ export async function restaurarDePapelera(db: Db, id: number): Promise<void> {
   await db.transaccion(pasos);
 }
 
+/** Versiones anteriores de notas que ya no existen ni están en la papelera. */
+const BORRAR_VERSIONES_HUERFANAS = `DELETE FROM notas_versiones
+  WHERE nota_id NOT IN (SELECT id FROM notas_clinicas)
+    AND nota_id NOT IN (SELECT registro_id FROM papelera WHERE tipo = 'nota')`;
+
 export async function borrarDePapelera(db: Db, id: number): Promise<void> {
-  await db.execute("DELETE FROM papelera WHERE id = $1", [id]);
+  await db.transaccion([
+    { sql: "DELETE FROM papelera WHERE id = $1", params: [id] },
+    { sql: BORRAR_VERSIONES_HUERFANAS },
+  ]);
 }
 
 /** Borra definitivamente lo que lleva más de 30 días en la papelera. */
@@ -798,6 +818,7 @@ export async function vaciarPapeleraVencida(db: Db, ahora: string): Promise<numb
     ahora.replace("T", " "),
     `-${DIAS_PAPELERA} days`,
   ]);
+  if (r.rowsAffected) await db.execute(BORRAR_VERSIONES_HUERFANAS);
   return r.rowsAffected;
 }
 
@@ -811,4 +832,141 @@ export function listarHistorial(db: Db, pacienteId: number | null, limite = 200)
       LIMIT $2`,
     [pacienteId, limite],
   );
+}
+
+// ---------- Notas clínicas ----------
+// Las notas viven en la base cifrada. Nunca se escriben en el registro de errores:
+// los mensajes de error de SQLite no incluyen los valores de los parámetros.
+
+export interface DatosNota {
+  paciente_id: number;
+  turno_id?: number | null;
+  /** AAAA-MM-DD */
+  fecha: string;
+  plantilla: string;
+  secciones: SeccionNota[];
+}
+
+export interface FiltroNotas {
+  pacienteId?: number | null;
+}
+
+type FilaNota = Omit<NotaClinica, "secciones"> & { secciones: string };
+
+function leerSecciones(json: string): SeccionNota[] {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.map((s) => ({ titulo: String(s?.titulo ?? ""), texto: String(s?.texto ?? "") })) : [];
+  } catch {
+    return [];
+  }
+}
+
+const SELECT_NOTAS = `SELECT n.*, p.nombre AS paciente_nombre, t.inicio AS turno_inicio
+    FROM notas_clinicas n
+    JOIN pacientes p ON p.id = n.paciente_id
+    LEFT JOIN turnos t ON t.id = n.turno_id`;
+
+const conSecciones = (filas: FilaNota[]): NotaClinica[] =>
+  filas.map((f) => ({ ...f, secciones: leerSecciones(f.secciones) }));
+
+/** Notas, de la más nueva a la más vieja. La búsqueda por texto se hace con filtrarNotas (src/notas/logica.ts). */
+export async function listarNotas(db: Db, filtro: FiltroNotas = {}): Promise<NotaClinica[]> {
+  const filas = await db.select<FilaNota[]>(
+    `${SELECT_NOTAS}
+      WHERE $1 IS NULL OR n.paciente_id = $1
+      ORDER BY n.fecha DESC, COALESCE(t.inicio, '') DESC, n.id DESC`,
+    [filtro.pacienteId ?? null],
+  );
+  return conSecciones(filas);
+}
+
+export async function obtenerNota(db: Db, id: number): Promise<NotaClinica | null> {
+  const filas = await db.select<FilaNota[]>(`${SELECT_NOTAS} WHERE n.id = $1`, [id]);
+  return conSecciones(filas)[0] ?? null;
+}
+
+/** Nota de una sesión, si ya tiene. */
+export async function notaDeTurno(db: Db, turnoId: number): Promise<NotaClinica | null> {
+  const filas = await db.select<FilaNota[]>(`${SELECT_NOTAS} WHERE n.turno_id = $1`, [turnoId]);
+  return conSecciones(filas)[0] ?? null;
+}
+
+/** Ids de los turnos de un paciente que tienen nota. */
+export async function turnosConNota(db: Db, pacienteId: number): Promise<Set<number>> {
+  const filas = await db.select<{ turno_id: number }[]>(
+    "SELECT turno_id FROM notas_clinicas WHERE paciente_id = $1 AND turno_id IS NOT NULL",
+    [pacienteId],
+  );
+  return new Set(filas.map((f) => f.turno_id));
+}
+
+async function validarNota(db: Db, d: DatosNota, id: number | null): Promise<SeccionNota[]> {
+  if (!d.paciente_id) throw new Error("Elegí el paciente.");
+  if (!FECHA.test(d.fecha)) throw new Error("La fecha no es válida.");
+  const secciones = d.secciones
+    .map((s) => ({ titulo: s.titulo.trim(), texto: s.texto.replace(/\s+$/, "") }))
+    .filter((s) => s.titulo || s.texto);
+  if (secciones.every((s) => !s.texto.trim())) throw new Error("La nota está vacía.");
+  if (d.turno_id != null) {
+    const [t] = await db.select<{ paciente_id: number }[]>("SELECT paciente_id FROM turnos WHERE id = $1", [d.turno_id]);
+    if (!t) throw new Error("La sesión elegida ya no existe.");
+    if (t.paciente_id !== d.paciente_id) throw new Error("La sesión elegida es de otro paciente.");
+    const otra = await db.select<{ id: number }[]>(
+      "SELECT id FROM notas_clinicas WHERE turno_id = $1 AND id IS NOT $2",
+      [d.turno_id, id],
+    );
+    if (otra.length) throw new Error("Esa sesión ya tiene una nota.");
+  }
+  return secciones;
+}
+
+export async function crearNota(db: Db, d: DatosNota): Promise<number> {
+  const secciones = await validarNota(db, d, null);
+  const r = await db.execute(
+    `INSERT INTO notas_clinicas (paciente_id, turno_id, fecha, plantilla, secciones)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [d.paciente_id, d.turno_id ?? null, d.fecha, d.plantilla, JSON.stringify(secciones)],
+  );
+  return Number(r.lastInsertId);
+}
+
+/** Guarda los cambios; la versión anterior queda en notas_versiones (trigger de la migración 0006). */
+export async function actualizarNota(db: Db, id: number, d: DatosNota, ahora: string): Promise<void> {
+  const secciones = await validarNota(db, d, id);
+  await db.execute(
+    `UPDATE notas_clinicas
+        SET paciente_id = $1, turno_id = $2, fecha = $3, plantilla = $4, secciones = $5, modificado_en = $6
+      WHERE id = $7`,
+    [d.paciente_id, d.turno_id ?? null, d.fecha, d.plantilla, JSON.stringify(secciones), ahora.replace("T", " "), id],
+  );
+}
+
+/** Manda la nota a la papelera. Devuelve el id en la papelera, para poder deshacer. */
+export async function eliminarNota(db: Db, id: number): Promise<number | null> {
+  await db.transaccion([
+    {
+      // La descripción no lleva el contenido de la nota, solo paciente y fecha.
+      sql: `INSERT INTO papelera (tipo, registro_id, datos, descripcion)
+            SELECT 'nota', n.id,
+                   json_object('id', n.id, 'paciente_id', n.paciente_id, 'turno_id', n.turno_id, 'fecha', n.fecha,
+                               'plantilla', n.plantilla, 'secciones', n.secciones,
+                               'creado_en', n.creado_en, 'modificado_en', n.modificado_en),
+                   'Nota clínica de ' || p.nombre || ' (' || n.fecha || ')'
+              FROM notas_clinicas n JOIN pacientes p ON p.id = n.paciente_id
+             WHERE n.id = $1`,
+      params: [id],
+    },
+    { sql: "DELETE FROM notas_clinicas WHERE id = $1", params: [id] },
+  ]);
+  return ultimoEnPapelera(db, "nota", id);
+}
+
+/** Versiones anteriores de una nota, de la más nueva a la más vieja. */
+export async function listarVersionesNota(db: Db, notaId: number): Promise<VersionNota[]> {
+  const filas = await db.select<(Omit<VersionNota, "secciones"> & { secciones: string })[]>(
+    "SELECT * FROM notas_versiones WHERE nota_id = $1 ORDER BY id DESC",
+    [notaId],
+  );
+  return filas.map((f) => ({ ...f, secciones: leerSecciones(f.secciones) }));
 }

@@ -89,3 +89,36 @@ export interface NoLaborable {
   descripcion: string;
   tipo: "feriado" | "vacaciones";
 }
+
+/** Una parte de la nota clínica (por ejemplo "Observaciones"). */
+export interface SeccionNota {
+  titulo: string;
+  texto: string;
+}
+
+/** Nota clínica de una sesión, con la evolución del paciente. */
+export interface NotaClinica {
+  id: number;
+  paciente_id: number;
+  paciente_nombre: string;
+  /** Sesión a la que corresponde, si hay. */
+  turno_id: number | null;
+  /** Inicio de esa sesión (AAAA-MM-DDTHH:MM), si el turno existe. */
+  turno_inicio: string | null;
+  /** AAAA-MM-DD */
+  fecha: string;
+  plantilla: string;
+  secciones: SeccionNota[];
+  creado_en: string;
+  modificado_en: string;
+}
+
+/** Cómo estaba una nota antes de un cambio. */
+export interface VersionNota {
+  id: number;
+  nota_id: number;
+  fecha: string;
+  plantilla: string;
+  secciones: SeccionNota[];
+  guardada_en: string;
+}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Repeat } from "lucide-react";
+import { NotebookPen, Repeat } from "lucide-react";
 import type { EstadoTurno, Paciente, Serie, TurnoConPaciente } from "../tipos";
 import { ESTADOS_TURNO } from "../tipos";
 import { turnosSuperpuestos } from "./logica";
@@ -46,6 +46,8 @@ interface Props {
   onEliminar: (id: number) => Promise<void>;
   onTerminarSerie: (serieId: number, desdeFecha: string) => Promise<void>;
   onCerrar: () => void;
+  /** Abre la nota clínica de este turno. */
+  onNota?: () => void;
 }
 
 const fechaCorta = (f: string) =>
@@ -395,6 +397,11 @@ export default function TurnoModal(props: Props) {
             </button>
           )}
           <span className="crece" />
+          {turno && props.onNota && (
+            <button type="button" onClick={props.onNota} disabled={guardando} title="Escribir o ver la nota clínica de esta sesión">
+              <NotebookPen size={16} className="icono" /> Nota de la sesión
+            </button>
+          )}
           <button type="button" onClick={props.onCerrar} disabled={guardando}>
             Cerrar
           </button>

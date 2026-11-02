@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { NotebookPen } from "lucide-react";
 import { obtenerDb } from "../db";
 import {
   actualizarPaciente,
@@ -7,6 +8,7 @@ import {
   listarTurnosDePaciente,
   marcarPagado,
   saldarPaciente,
+  turnosConNota,
 } from "../repositorio";
 import type { PacienteConResumen, Turno } from "../tipos";
 import { ESTADOS_TURNO } from "../tipos";
@@ -14,6 +16,7 @@ import { leerMonto, montoEditable, pesos } from "../formato";
 import { aIsoLocal, desdeIsoLocal } from "../fechas";
 import ImpresionFicha from "./ImpresionFicha";
 import { textoError } from "../errores";
+import NotaModal from "../notas/NotaModal";
 
 interface Props {
   /** null = paciente nuevo */
@@ -37,6 +40,8 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [imprimiendo, setImprimiendo] = useState(false);
+  const [conNota, setConNota] = useState<Set<number>>(new Set());
+  const [notaDe, setNotaDe] = useState<Turno | null>(null);
   const terminarImpresion = useCallback(() => setImprimiendo(false), []);
 
   useEffect(() => {
@@ -46,7 +51,11 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
   }, [onCerrar]);
 
   const cargarTurnos = useCallback(async () => {
-    if (paciente) setTurnos(await listarTurnosDePaciente(await obtenerDb(), paciente.id));
+    if (!paciente) return;
+    const db = await obtenerDb();
+    const [t, n] = await Promise.all([listarTurnosDePaciente(db, paciente.id), turnosConNota(db, paciente.id)]);
+    setTurnos(t);
+    setConNota(n);
   }, [paciente]);
 
   useEffect(() => {
@@ -109,6 +118,7 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
   const saldo = pendientes.reduce((acc, t) => acc + t.monto, 0);
 
   return (
+    <>
     <div className="modal-fondo" onMouseDown={onCerrar}>
       <div className="modal ficha" onMouseDown={(e) => e.stopPropagation()}>
         <form onSubmit={guardar} className="ficha-datos">
@@ -177,6 +187,15 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
                     <span className="crece">{fmtTurno.format(desdeIsoLocal(t.inicio))}</span>
                     <span className="estado">{etiquetaEstado[t.estado]}</span>
                     <span className="num">{pesos(t.monto)}</span>
+                    <button
+                      type="button"
+                      className={`boton-icono${conNota.has(t.id) ? " con-nota" : ""}`}
+                      title={conNota.has(t.id) ? "Ver la nota clínica de esta sesión" : "Escribir la nota clínica de esta sesión"}
+                      aria-label={conNota.has(t.id) ? "Ver nota clínica" : "Escribir nota clínica"}
+                      onClick={() => setNotaDe(t)}
+                    >
+                      <NotebookPen size={15} />
+                    </button>
                     <label className="check" title="Pagado">
                       <input type="checkbox" checked={Boolean(t.pagado)} onChange={() => alternarPago(t)} disabled={ocupado} />
                       Pagado
@@ -190,5 +209,14 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar }: Props) {
       </div>
       {paciente && imprimiendo && <ImpresionFicha paciente={paciente} turnos={turnos} onTerminar={terminarImpresion} />}
     </div>
+    {notaDe && (
+      <NotaModal
+        notaId={null}
+        inicial={{ paciente_id: notaDe.paciente_id, turno_id: notaDe.id, fecha: notaDe.inicio.slice(0, 10) }}
+        onGuardado={() => void cargarTurnos()}
+        onCerrar={() => setNotaDe(null)}
+      />
+    )}
+    </>
   );
 }

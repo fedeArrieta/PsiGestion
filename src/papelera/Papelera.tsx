@@ -55,7 +55,7 @@ export default function Papelera() {
       <section className="panel">
         <h3>Papelera</h3>
         <p className="nota">
-          Los turnos y gastos eliminados quedan acá {DIAS_PAPELERA} días y después se borran solos.
+          Los turnos, gastos y notas clínicas eliminados quedan acá {DIAS_PAPELERA} días y después se borran solos.
         </p>
         {error && <p className="error">{error}</p>}
         {elementos.length === 0 ? (

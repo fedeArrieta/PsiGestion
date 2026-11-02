@@ -226,7 +226,7 @@ function ExportarExcel() {
       <h3>Exportar a Excel</h3>
       <p className="nota">
         Genera un archivo de Excel con los pacientes, los turnos y los gastos, para revisarlos o guardarlos fuera de la
-        app. Ojo: el archivo no está cifrado, guardalo en un lugar seguro.
+        app. Las notas clínicas no se incluyen. Ojo: el archivo no está cifrado, guardalo en un lugar seguro.
       </p>
       <div className="copias-carpeta">
         <label className="copias-conservar">
