@@ -2268,3 +2268,136 @@ button.boton-icono.con-nota {
   line-height: 20px;
   text-align: center;
 }
+
+/* ---------- Recibos ---------- */
+
+.recibo-modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recibo-modal small {
+  color: var(--texto-suave);
+}
+
+.recibo-listo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ok);
+}
+
+.recibo-modal p {
+  margin: 0;
+}
+
+.recibo-modal code,
+.config-recibos code {
+  word-break: break-all;
+}
+
+.recibo-pagos {
+  margin: 0;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.recibo-pagos legend {
+  padding: 0 4px;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.recibo-pagos ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.recibo-pagos li {
+  border-bottom: 1px solid var(--borde);
+}
+
+.recibo-pagos li label.check {
+  display: flex;
+  width: 100%;
+  padding: 7px 2px;
+  white-space: normal;
+}
+
+.recibo-total {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 2px 0;
+  font-size: 0.95rem;
+}
+
+.recibo-total strong {
+  color: var(--pago);
+}
+
+.aviso-recibo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 12px;
+  border-radius: var(--radio);
+  background: var(--pago-suave);
+  color: var(--texto);
+  font-size: 0.88rem;
+}
+
+.aviso-recibo > svg {
+  color: var(--pago);
+  flex: none;
+}
+
+button.boton-icono.con-recibo {
+  color: var(--pago);
+  background: var(--pago-suave);
+}
+
+button.boton-icono.oculto {
+  visibility: hidden;
+}
+
+.lista-recibos .acciones-recibo {
+  white-space: nowrap;
+}
+
+.lista-recibos .acciones-recibo button.enlace {
+  margin-left: 8px;
+}
+
+.lista-recibos button.enlace.peligro {
+  color: var(--atencion);
+}
+
+.ficha-turnos .lista-recibos {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.campos-recibo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px 14px;
+}
+
+.config-recibos form.panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.config-recibos form.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

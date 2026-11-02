@@ -61,6 +61,14 @@ import {
   marcarRecordatorio,
   leerPlantillaRecordatorio,
   guardarPlantillaRecordatorio,
+  emitirRecibo,
+  anularRecibo,
+  listarRecibos,
+  turnosSinRecibo,
+  recibosDeTurnos,
+  proximoNumeroRecibo,
+  ultimoMedioPago,
+  obtenerRecibo,
   type Db,
 } from "./repositorio";
 
@@ -891,6 +899,91 @@ describe("repositorio", () => {
       await guardarPlantillaRecordatorio(db, { mensaje: " Hola {nombre} ", asunto: "" });
       expect(await leerPlantillaRecordatorio(db)).toEqual({ mensaje: "Hola {nombre}", asunto: original.asunto });
       await expect(guardarPlantillaRecordatorio(db, { mensaje: "  ", asunto: "x" })).rejects.toThrow(/vacío/);
+    });
+  });
+
+  describe("recibos", () => {
+    async function preparar() {
+      await guardarConfiguracion(db, "nombre_profesional", "Dra. Martínez");
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 25000, documento: " 30111222 " });
+      const t1 = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50 });
+      const t2 = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-10T10:00", duracion_min: 50 });
+      const t3 = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-17T10:00", duracion_min: 50 });
+      await actualizarTurno(db, t1, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50, estado: "realizado", pagado: true });
+      await actualizarTurno(db, t2, {
+        paciente_id: ana, inicio: "2026-11-10T10:00", duracion_min: 50, estado: "ausente", aviso: "sin_aviso", cargo: 12500.5, pagado: true,
+      });
+      return { ana, t1, t2, t3 };
+    }
+
+    it("solo los turnos pagados con importe quedan pendientes de recibo", async () => {
+      const { ana, t1, t2 } = await preparar();
+      expect((await turnosSinRecibo(db, ana)).map((t) => t.id).sort()).toEqual([t1, t2].sort());
+    });
+
+    it("emite el recibo con número correlativo, copia de los datos y total en centavos exactos", async () => {
+      const { ana, t1, t2 } = await preparar();
+      const r = await emitirRecibo(db, { paciente_id: ana, turno_ids: [t2, t1], fecha: "2026-11-11", medio_pago: "Efectivo" });
+      expect(r).toMatchObject({
+        numero: 1, fecha: "2026-11-11", paciente_nombre: "Ana", paciente_documento: "30111222", total: 37500.5, medio_pago: "Efectivo",
+      });
+      expect(r.emisor.nombre).toBe("Dra. Martínez");
+      expect(r.items.map((i) => [i.turno_id, i.importe, i.concepto])).toEqual([
+        [t1, 25000, "Sesión de psicoterapia"],
+        [t2, 12500.5, "Sesión de psicoterapia (ausencia)"],
+      ]);
+      expect(await turnosSinRecibo(db, ana)).toEqual([]);
+      expect(await recibosDeTurnos(db, ana)).toEqual(new Map([[t1, 1], [t2, 1]]));
+      expect(await ultimoMedioPago(db)).toBe("Efectivo");
+      // Cambiar después la ficha o los datos del profesional no cambia el recibo emitido.
+      await actualizarPaciente(db, ana, { nombre: "Ana López", monto_sesion: 25000 }, "2026-11-12T00:00");
+      expect((await obtenerRecibo(db, r.id))?.paciente_nombre).toBe("Ana");
+      const historial = await listarHistorial(db, ana);
+      expect(historial.filter((h) => h.accion === "recibo")).toHaveLength(2);
+    });
+
+    it("no emite sin el nombre del profesional, sin pagos o con pagos que ya tienen recibo", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 25000 });
+      const t = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50 });
+      await expect(emitirRecibo(db, { paciente_id: ana, turno_ids: [t], fecha: "2026-11-03" })).rejects.toThrow("nombre");
+      await guardarConfiguracion(db, "recibo_nombre", "Lic. Y");
+      await expect(emitirRecibo(db, { paciente_id: ana, turno_ids: [], fecha: "2026-11-03" })).rejects.toThrow("al menos");
+      // Programado sin pagar: no se puede.
+      await expect(emitirRecibo(db, { paciente_id: ana, turno_ids: [t], fecha: "2026-11-03" })).rejects.toThrow("ya tiene recibo");
+      await actualizarTurno(db, t, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50, estado: "realizado", pagado: true });
+      await emitirRecibo(db, { paciente_id: ana, turno_ids: [t], fecha: "2026-11-03" });
+      await expect(emitirRecibo(db, { paciente_id: ana, turno_ids: [t], fecha: "2026-11-03" })).rejects.toThrow("ya tiene recibo");
+    });
+
+    it("anular libera los pagos; el recibo no se borra ni se modifica", async () => {
+      const { ana, t1 } = await preparar();
+      const r = await emitirRecibo(db, { paciente_id: ana, turno_ids: [t1], fecha: "2026-11-11" });
+      await anularRecibo(db, r.id, "Monto equivocado", "2026-11-12T09:00");
+      await expect(anularRecibo(db, r.id, null, "2026-11-12T09:00")).rejects.toThrow("ya estaba anulado");
+      const [anulado] = await listarRecibos(db, ana);
+      expect(anulado).toMatchObject({ anulado_en: "2026-11-12 09:00", motivo_anulacion: "Monto equivocado" });
+      expect((await turnosSinRecibo(db, ana)).map((t) => t.id)).toContain(t1);
+      const nuevo = await emitirRecibo(db, { paciente_id: ana, turno_ids: [t1], fecha: "2026-11-12" });
+      expect(nuevo.numero).toBe(2);
+      await expect(db.execute("DELETE FROM recibos WHERE id = $1", [r.id])).rejects.toThrow("se anulan");
+      await expect(db.execute("UPDATE recibos SET total = 1 WHERE id = $1", [nuevo.id])).rejects.toThrow("no se puede modificar");
+      await expect(db.execute("UPDATE recibos SET anulado_en = NULL WHERE id = $1", [r.id])).rejects.toThrow("no se puede modificar");
+      expect((await listarHistorial(db, ana)).some((h) => h.accion === "recibo anulado" && h.detalle.includes("Monto equivocado"))).toBe(true);
+    });
+
+    it("la numeración puede arrancar desde un número configurado", async () => {
+      const { ana, t1, t2 } = await preparar();
+      expect(await proximoNumeroRecibo(db)).toBe(1);
+      await guardarConfiguracion(db, "recibo_proximo_numero", "151");
+      expect((await emitirRecibo(db, { paciente_id: ana, turno_ids: [t1], fecha: "2026-11-11" })).numero).toBe(151);
+      expect((await emitirRecibo(db, { paciente_id: ana, turno_ids: [t2], fecha: "2026-11-11" })).numero).toBe(152);
+    });
+
+    it("se exportan a Excel", async () => {
+      const { ana, t1 } = await preparar();
+      await emitirRecibo(db, { paciente_id: ana, turno_ids: [t1], fecha: "2026-11-11" });
+      expect((await datosParaExportar(db, "2026-11")).recibos).toHaveLength(1);
+      expect((await datosParaExportar(db, "2026-10")).recibos).toHaveLength(0);
     });
   });
 });

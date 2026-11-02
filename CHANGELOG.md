@@ -2,6 +2,24 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.8.0] - 2026-11-02
+
+### Nuevo
+
+- Recibos de pago en PDF: al marcar un pago en la ficha del paciente (una sesión o "Marcar todo pagado"), aparece "Emitir recibo". El recibo lleva tus datos, el nombre del paciente (y su DNI o CUIT si lo cargaste), la fecha, la forma de pago, el detalle de las sesiones con sus importes y el total en números y en letras.
+- El PDF se guarda en Documentos\PsiGestion\Recibos (se puede cambiar) y se abre con un clic, o se muestra en la carpeta para adjuntarlo en un mail o en WhatsApp.
+- Numeración correlativa: cada recibo tiene su número y no se repite. Si ya venías usando un talonario, podés elegir desde qué número seguir.
+- En la ficha del paciente, la pestaña "Recibos" lista sus recibos y permite emitir uno con los pagos que todavía no tienen. En la lista de sesiones, el ícono de recibo muestra qué pagos ya tienen el suyo y abre el PDF.
+- Configuración → Recibos: tus datos para el recibo (nombre, profesión, matrícula, CUIT, domicilio, teléfono y email), el concepto de cada sesión, el texto al pie ("Documento no válido como factura." por defecto), un recibo de ejemplo para ver cómo queda y la lista de todos los recibos emitidos.
+- Ficha del paciente: nuevo campo "DNI o CUIT", opcional.
+- La exportación a Excel suma una hoja con los recibos.
+
+### Seguridad y privacidad
+
+- Un recibo emitido no se borra ni se modifica: si hay un error se anula (queda guardado con la marca ANULADO) y sus pagos se pueden incluir en uno nuevo. La emisión y la anulación quedan en el historial de cambios.
+- El recibo lleva solo fechas, concepto e importes: nunca notas ni datos clínicos. Es un comprobante de pago, no una factura electrónica.
+- Los PDF no están cifrados: guardalos en un lugar seguro. Si se borran, se pueden volver a generar iguales desde la lista de recibos.
+
 ## [0.7.0] - 2026-11-02
 
 ### Nuevo

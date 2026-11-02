@@ -1,6 +1,6 @@
 [package]
 name = "psigestion"
-version = "0.7.0"
+version = "0.8.0"
 description = "Agenda y finanzas para psicólogos"
 authors = ["Federico Arrieta"]
 edition = "2024"

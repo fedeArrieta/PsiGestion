@@ -2,6 +2,7 @@ mod actualizar;
 mod base;
 mod datos;
 mod exportar;
+mod recibos;
 mod registro;
 mod seguridad;
 
@@ -47,6 +48,9 @@ pub fn run() {
             seguridad::importar_llave,
             registro::abrir_carpeta_registros,
             exportar::exportar_excel,
+            recibos::carpeta_recibos_sugerida,
+            recibos::guardar_recibo,
+            recibos::abrir_recibo,
             actualizar::instalar_actualizacion,
         ])
         .run(tauri::generate_context!())
