@@ -2,6 +2,21 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.9.0] - 2026-11-02
+
+### Nuevo
+
+- Sección "Reportes" en el menú, con los números de los últimos 12 meses o de cada año.
+- Resumen del período: ingresos (sesiones y ausencias cobradas), gastos, ganancia neta, en cuántos meses se cumplió el objetivo, tasa de ausencias y pacientes atendidos.
+- Gráficos mes a mes: ingresos y gastos, ganancia neta comparada con el objetivo mensual, tasa de ausencias y pacientes activos. Al pasar el mouse por un mes se ven los números exactos. El mes en curso se muestra más claro porque todavía puede cambiar.
+- "Ver tabla" muestra los mismos números en una tabla, con el objetivo cumplido o no en cada mes.
+- Exportar PDF: un reporte de dos hojas para el contador, con tus datos (nombre, matrícula y CUIT de Configuración → Recibos), el resumen, los gráficos y el detalle mes a mes.
+- Exportar Excel: hojas con el resumen mensual (ingresos, cobrado, pendiente, gastos, ganancia neta, objetivo, recibos emitidos, ausencias y pacientes), los gastos y los recibos del período.
+
+### Privacidad
+
+- Los reportes y sus archivos llevan solo números, gastos y recibos: nunca notas ni datos clínicos. Los archivos exportados no están cifrados: guardalos en un lugar seguro.
+
 ## [0.8.0] - 2026-11-02
 
 ### Nuevo

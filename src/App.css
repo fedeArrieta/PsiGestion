@@ -54,6 +54,10 @@
   --atencion-suave: light-dark(#f8e2df, #402624);
   --apagado: light-dark(#9aa49f, #6f7b76);
 
+  /* Series de los gráficos (Reportes): validadas para daltonismo en cada tema. */
+  --serie-1: light-dark(#008471, #1fa88f);
+  --serie-2: light-dark(#c47a3f, #d07e42);
+
   /* Logo */
   --logo-psi: light-dark(var(--bosque), #f1eee6);
   --logo-arco: var(--salvia);
@@ -2400,4 +2404,241 @@ button.boton-icono.oculto {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* ---------- Reportes ---------- */
+
+.reportes {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reportes .barra {
+  flex-wrap: wrap;
+}
+
+.reportes .barra button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.selector-periodo select {
+  font-size: 1rem;
+  font-weight: 600;
+  min-width: 190px;
+}
+
+.espaciador {
+  flex: 1;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.tarjetas-reportes {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+@media (max-width: 1250px) {
+  .tarjetas-reportes {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.aviso-exportado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  background: var(--acento-suave);
+  border-radius: var(--radio);
+}
+
+.aviso-exportado span {
+  flex: 1;
+  min-width: 200px;
+  word-break: break-all;
+}
+
+.graficos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 1000px) {
+  .graficos {
+    grid-template-columns: 1fr;
+  }
+}
+
+.grafico {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.grafico-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 0.8rem;
+  color: var(--texto);
+}
+
+.grafico-leyenda span,
+.grafico-tooltip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.muestra {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.muestra.serie-1 {
+  background: var(--serie-1);
+}
+
+.muestra.serie-2 {
+  background: var(--serie-2);
+}
+
+.muestra.referencia {
+  height: 0;
+  width: 14px;
+  border-radius: 0;
+  border-top: 2px dashed var(--texto);
+}
+
+.grafico-lienzo {
+  position: relative;
+  width: 100%;
+}
+
+.grafico-lienzo svg {
+  display: block;
+  overflow: visible;
+}
+
+.eje-grilla {
+  stroke: var(--borde);
+  stroke-width: 1;
+}
+
+.eje-base {
+  stroke: var(--texto-suave);
+  stroke-width: 1;
+}
+
+.eje-texto {
+  fill: var(--texto-suave);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.marca.serie-1 {
+  fill: var(--serie-1);
+}
+
+.marca.serie-2 {
+  fill: var(--serie-2);
+}
+
+.marca.atenuada {
+  fill-opacity: 0.45;
+}
+
+.marca-referencia {
+  stroke: var(--texto);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.banda-activa {
+  fill: var(--superficie-suave);
+}
+
+.zona-hover {
+  fill: transparent;
+}
+
+.grafico-tooltip {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+  white-space: nowrap;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra-modal);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.grafico-tooltip b {
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltip-detalle {
+  color: var(--texto-suave);
+}
+
+.tabla-reportes tbody tr {
+  cursor: default;
+}
+
+.tabla-reportes th,
+.tabla-reportes td {
+  padding: 9px 10px;
+  white-space: nowrap;
+}
+
+.suave {
+  color: var(--texto-suave);
+}
+
+.etiqueta-curso {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  color: var(--texto-suave);
+  background: var(--superficie-suave);
+  border-radius: 999px;
+}
+
+.estado-objetivo {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  border-radius: 999px;
+}
+
+.estado-objetivo.si {
+  color: var(--ok);
+  background: var(--ok-suave);
+}
+
+.estado-objetivo.no {
+  color: var(--atencion);
+  background: var(--atencion-suave);
 }

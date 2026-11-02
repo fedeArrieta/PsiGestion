@@ -69,6 +69,9 @@ import {
   proximoNumeroRecibo,
   ultimoMedioPago,
   obtenerRecibo,
+  datosReporte,
+  mesesEntre,
+  primerMesConDatos,
   type Db,
 } from "./repositorio";
 
@@ -984,6 +987,81 @@ describe("repositorio", () => {
       await emitirRecibo(db, { paciente_id: ana, turno_ids: [t1], fecha: "2026-11-11" });
       expect((await datosParaExportar(db, "2026-11")).recibos).toHaveLength(1);
       expect((await datosParaExportar(db, "2026-10")).recibos).toHaveLength(0);
+    });
+  });
+
+  describe("reportes", () => {
+    it("lista los meses de un período, cruzando el año", () => {
+      expect(mesesEntre("2025-11", "2026-02")).toEqual(["2025-11", "2025-12", "2026-01", "2026-02"]);
+      expect(mesesEntre("2026-03", "2026-03")).toEqual(["2026-03"]);
+    });
+
+    it("junta ingresos, ausencias cobradas, gastos, objetivos, pacientes y recibos mes a mes", async () => {
+      expect(await primerMesConDatos(db)).toBeNull();
+      await guardarConfiguracion(db, "nombre_profesional", "Dra. Martínez");
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 25000 });
+      const beto = await crearPaciente(db, { nombre: "Beto", monto_sesion: 20000.5 });
+      const base = { duracion_min: 50 };
+      const turno = async (paciente_id: number, inicio: string, extra: Partial<Parameters<typeof actualizarTurno>[2]> = {}) => {
+        const id = await crearTurno(db, { paciente_id, inicio, ...base });
+        if (Object.keys(extra).length) await actualizarTurno(db, id, { paciente_id, inicio, ...base, ...extra });
+        return id;
+      };
+      // Septiembre: Ana realizada y pagada; Beto ausente sin aviso con cargo.
+      const t1 = await turno(ana, "2026-09-07T10:00", { estado: "realizado", pagado: true });
+      await turno(beto, "2026-09-08T10:00", { estado: "ausente", aviso: "sin_aviso", cargo: 10000.25 });
+      // Octubre: Ana y Beto realizadas (Beto por primera vez), un cancelado, una ausencia avisada sin cargo.
+      await turno(ana, "2026-10-05T10:00", { estado: "realizado" });
+      await turno(beto, "2026-10-06T10:00", { estado: "realizado", pagado: true });
+      await turno(ana, "2026-10-12T10:00", { estado: "cancelado" });
+      await turno(ana, "2026-10-19T10:00", { estado: "ausente", aviso: "con_aviso" });
+      // Noviembre: solo programado (no cuenta).
+      await turno(ana, "2026-11-02T10:00");
+      await crearGasto(db, { mes: "2026-09", descripcion: "Consultorio", monto: 50000.1, fijo: true });
+      await crearGasto(db, { mes: "2026-10", descripcion: "Consultorio", monto: 50000.1, fijo: true });
+      await crearGasto(db, { mes: "2026-10", descripcion: "Supervisión", monto: 20000 });
+      await guardarObjetivo(db, "2026-09", 300000);
+      await emitirRecibo(db, { paciente_id: ana, turno_ids: [t1], fecha: "2026-09-30" });
+
+      expect(await primerMesConDatos(db)).toBe("2026-09");
+      const r = await datosReporte(db, "2026-08", "2026-11");
+      expect(r.meses.map((m) => m.mes)).toEqual(["2026-08", "2026-09", "2026-10", "2026-11"]);
+      expect(r.meses[0]).toMatchObject({ sesiones_realizadas: 0, gastos: 0, pacientes_activos: 0 });
+      expect(r.meses[1]).toMatchObject({
+        sesiones_realizadas: 1,
+        ingresos_sesiones: 25000,
+        ingresos_ausencias: 10000.25,
+        cobrado: 25000,
+        ausencias: 1,
+        ausencias_sin_aviso: 1,
+        gastos: 50000.1,
+        pacientes_activos: 1,
+        pacientes_nuevos: 1,
+        recibos: 25000,
+        recibos_cantidad: 1,
+      });
+      expect(r.meses[2]).toMatchObject({
+        sesiones_realizadas: 2,
+        ingresos_sesiones: 45000.5,
+        ingresos_ausencias: 0,
+        cobrado: 20000.5,
+        ausencias: 1,
+        ausencias_sin_aviso: 0,
+        cancelados: 1,
+        gastos: 70000.1,
+        pacientes_activos: 2,
+        pacientes_nuevos: 1,
+      });
+      expect(r.meses[3]).toMatchObject({ sesiones_realizadas: 0, ingresos_sesiones: 0 });
+      expect(r.objetivos).toEqual({ "2026-08": null, "2026-09": 300000, "2026-10": 300000, "2026-11": 300000 });
+      expect(r.pacientes_periodo).toBe(2);
+      expect(r.gastos).toHaveLength(3);
+      expect(r.recibos.map((x) => x.numero)).toEqual([1]);
+    });
+
+    it("rechaza un período inválido", async () => {
+      await expect(datosReporte(db, "2026-10", "2026-09")).rejects.toThrow("período");
+      await expect(datosReporte(db, "2026-1", "2026-09")).rejects.toThrow("período");
     });
   });
 });

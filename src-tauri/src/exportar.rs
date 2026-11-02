@@ -7,7 +7,7 @@ use serde_json::Value;
 #[derive(Deserialize)]
 pub struct Columna {
     titulo: String,
-    /// "texto", "numero", "pesos" o "fecha".
+    /// "texto", "numero", "pesos" o "porcentaje" (0,25 = 25%).
     #[serde(default)]
     tipo: String,
     #[serde(default)]
@@ -35,6 +35,7 @@ fn escribir_libro(ruta: &str, hojas: &[Hoja]) -> Result<(), rust_xlsxwriter::Xls
     let titulo = Format::new().set_bold().set_background_color("#E3EEF5");
     let pesos = Format::new().set_num_format("\"$\" #,##0.00");
     let numero = Format::new().set_num_format("0");
+    let porcentaje = Format::new().set_num_format("0.0%");
     for hoja in hojas {
         let h = libro.add_worksheet();
         h.set_name(&hoja.nombre)?;
@@ -56,6 +57,7 @@ fn escribir_libro(ruta: &str, hojas: &[Hoja]) -> Result<(), rust_xlsxwriter::Xls
                         match tipo {
                             "pesos" => h.write_number_with_format(f, c, n, &pesos)?,
                             "numero" => h.write_number_with_format(f, c, n, &numero)?,
+                            "porcentaje" => h.write_number_with_format(f, c, n, &porcentaje)?,
                             _ => h.write_number(f, c, n)?,
                         };
                     }
@@ -78,6 +80,31 @@ fn escribir_libro(ruta: &str, hojas: &[Hoja]) -> Result<(), rust_xlsxwriter::Xls
     libro.save(ruta)
 }
 
+/// Guarda un PDF (un reporte) en la ruta que eligió la persona en el diálogo de guardar.
+#[tauri::command]
+pub fn guardar_pdf(ruta: String, contenido: Vec<u8>) -> Result<(), String> {
+    let destino = validar_ruta_pdf(&ruta)?;
+    if !contenido.starts_with(b"%PDF-") {
+        return Err("El contenido no es un PDF.".into());
+    }
+    std::fs::write(&destino, &contenido).map_err(|e| {
+        log::error!("guardar_pdf: {e}");
+        format!("No se pudo guardar el PDF: {e}")
+    })
+}
+
+/// Solo rutas absolutas, terminadas en .pdf, en una carpeta que exista.
+fn validar_ruta_pdf(ruta: &str) -> Result<std::path::PathBuf, String> {
+    let p = std::path::PathBuf::from(ruta);
+    let es_pdf = p.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("pdf"));
+    let carpeta_ok = p.parent().is_some_and(|c| c.is_dir());
+    if p.is_absolute() && es_pdf && carpeta_ok && !p.is_dir() {
+        Ok(p)
+    } else {
+        Err("La ruta elegida para el PDF no es válida.".into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,5 +122,14 @@ mod tests {
         let bytes = std::fs::read(&ruta).unwrap();
         assert_eq!(&bytes[..2], b"PK", "un .xlsx es un zip");
         std::fs::remove_file(&ruta).unwrap();
+    }
+
+    #[test]
+    fn rutas_de_pdf() {
+        let carpeta = std::env::temp_dir();
+        assert!(validar_ruta_pdf(carpeta.join("reporte.pdf").to_str().unwrap()).is_ok());
+        assert!(validar_ruta_pdf(carpeta.join("reporte.exe").to_str().unwrap()).is_err());
+        assert!(validar_ruta_pdf("reporte.pdf").is_err());
+        assert!(validar_ruta_pdf(carpeta.join("no-existe-psigestion").join("r.pdf").to_str().unwrap()).is_err());
     }
 }

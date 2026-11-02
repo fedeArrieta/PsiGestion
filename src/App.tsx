@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CalendarX2,
   ChartColumn,
+  ChartLine,
   DatabaseBackup,
   House,
   Info,
@@ -40,6 +41,7 @@ import { Logo } from "./marca/Logo";
 import { guardarTema, leerTema, NOMBRE_TEMA, SIGUIENTE_TEMA, type Tema } from "./marca/tema";
 import Pacientes from "./pacientes/Pacientes";
 import Finanzas from "./finanzas/Finanzas";
+import Reportes from "./reportes/Reportes";
 import NotasClinicas from "./notas/NotasClinicas";
 import Recordatorios from "./recordatorios/Recordatorios";
 import Acceso from "./seguridad/Acceso";
@@ -56,7 +58,7 @@ import "./App.css";
 import { textoError } from "./errores";
 import { alCambiarDatos } from "./papelera/deshacer";
 
-type Seccion = "inicio" | "agenda" | "recordatorios" | "pacientes" | "notas" | "finanzas" | "copias" | "papelera" | "seguridad" | "ausencias" | "recibos" | "version";
+type Seccion = "inicio" | "agenda" | "recordatorios" | "pacientes" | "notas" | "finanzas" | "reportes" | "copias" | "papelera" | "seguridad" | "ausencias" | "recibos" | "version";
 
 type Icono = ComponentType<LucideProps>;
 
@@ -67,6 +69,7 @@ const SECCIONES: { id: Seccion; titulo: string; icono: Icono }[] = [
   { id: "pacientes", titulo: "Pacientes", icono: Users },
   { id: "notas", titulo: "Notas clínicas", icono: NotebookPen },
   { id: "finanzas", titulo: "Finanzas", icono: ChartColumn },
+  { id: "reportes", titulo: "Reportes", icono: ChartLine },
 ];
 
 const SECCIONES_CONFIGURACION: { id: Seccion; titulo: string; icono: Icono }[] = [
@@ -371,6 +374,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         {seccion === "pacientes" && <Pacientes />}
         {seccion === "notas" && <NotasClinicas />}
         {seccion === "finanzas" && <Finanzas />}
+        {seccion === "reportes" && <Reportes />}
         {seccion === "copias" && <Copias onCambio={revisarCopias} />}
         {seccion === "papelera" && <Papelera />}
         {seccion === "seguridad" && <Seguridad onMinutos={setMinutosBloqueo} />}

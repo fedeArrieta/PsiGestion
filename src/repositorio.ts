@@ -1204,3 +1204,162 @@ export async function ultimoMedioPago(db: Db): Promise<string | null> {
   const [f] = await db.select<{ medio_pago: string | null }[]>("SELECT medio_pago FROM recibos ORDER BY id DESC LIMIT 1");
   return f?.medio_pago ?? null;
 }
+
+// ---------- Reportes ----------
+
+/** Números de un mes para los reportes (montos en pesos). Sin datos clínicos. */
+export interface DatosMesReporte {
+  /** AAAA-MM */
+  mes: string;
+  sesiones_realizadas: number;
+  /** Lo ganado con sesiones realizadas. */
+  ingresos_sesiones: number;
+  /** Lo que se cobra por ausencias. */
+  ingresos_ausencias: number;
+  /** Parte de lo ganado en el mes que ya se cobró. */
+  cobrado: number;
+  ausencias: number;
+  ausencias_sin_aviso: number;
+  cancelados: number;
+  gastos: number;
+  /** Pacientes con al menos una sesión realizada en el mes. */
+  pacientes_activos: number;
+  /** Pacientes cuya primera sesión realizada fue en el mes. */
+  pacientes_nuevos: number;
+  /** Total de recibos vigentes emitidos en el mes. */
+  recibos: number;
+  recibos_cantidad: number;
+}
+
+export interface DatosReporte {
+  meses: DatosMesReporte[];
+  /** Objetivo de cada mes del período (el cargado o el del último mes anterior). null si no hay. */
+  objetivos: Record<string, number | null>;
+  /** Pacientes distintos con sesiones realizadas en todo el período. */
+  pacientes_periodo: number;
+  /** Detalle para el contador. */
+  gastos: Gasto[];
+  recibos: Recibo[];
+}
+
+/** Lista de meses AAAA-MM entre desde y hasta, inclusive. */
+export function mesesEntre(desde: string, hasta: string): string[] {
+  const r: string[] = [];
+  let [a, m] = desde.split("-").map(Number);
+  const [ah, mh] = hasta.split("-").map(Number);
+  while (a < ah || (a === ah && m <= mh)) {
+    r.push(`${a}-${String(m).padStart(2, "0")}`);
+    if (++m > 12) {
+      m = 1;
+      a++;
+    }
+    if (r.length > 240) break;
+  }
+  return r;
+}
+
+/** Datos mes a mes para los reportes, de desde a hasta (AAAA-MM, inclusive). */
+export async function datosReporte(db: Db, desde: string, hasta: string): Promise<DatosReporte> {
+  if (!MES.test(desde) || !MES.test(hasta) || desde > hasta) throw new Error("El período no es válido.");
+  const lista = mesesEntre(desde, hasta);
+  const inicio = `${desde}-01`;
+  const fin = `${hasta}-31~`; // cubre cualquier fecha u hora del último mes
+  type Fila = Record<string, number | string>;
+  const [turnos, gastosMes, nuevos, recibosMes, periodo, objetivos, gastos, recibos] = await Promise.all([
+    db.select<Fila[]>(
+      `SELECT substr(t.inicio, 1, 7) AS mes,
+              COALESCE(SUM(t.estado = 'realizado'), 0) AS sesiones_realizadas,
+              COALESCE(SUM(CASE WHEN t.estado = 'realizado' THEN t.monto END), 0) AS ingresos_sesiones,
+              COALESCE(SUM(CASE WHEN t.estado = 'ausente' THEN t.cargo END), 0) AS ingresos_ausencias,
+              COALESCE(SUM(CASE WHEN t.pagado = 1 THEN ${IMPORTE} END), 0) AS cobrado,
+              COALESCE(SUM(t.estado = 'ausente'), 0) AS ausencias,
+              COALESCE(SUM(t.estado = 'ausente' AND t.aviso IS NOT 'con_aviso'), 0) AS ausencias_sin_aviso,
+              COALESCE(SUM(t.estado = 'cancelado'), 0) AS cancelados,
+              COUNT(DISTINCT CASE WHEN t.estado = 'realizado' THEN t.paciente_id END) AS pacientes_activos
+         FROM turnos t WHERE t.inicio >= $1 AND t.inicio < $2
+        GROUP BY 1`,
+      [inicio, fin],
+    ),
+    db.select<Fila[]>(
+      "SELECT mes, COALESCE(SUM(monto), 0) AS gastos FROM gastos WHERE mes >= $1 AND mes <= $2 GROUP BY mes",
+      [desde, hasta],
+    ),
+    db.select<Fila[]>(
+      `SELECT mes, COUNT(*) AS pacientes_nuevos FROM (
+          SELECT substr(MIN(inicio), 1, 7) AS mes FROM turnos WHERE estado = 'realizado' GROUP BY paciente_id
+       ) WHERE mes >= $1 AND mes <= $2 GROUP BY mes`,
+      [desde, hasta],
+    ),
+    db.select<Fila[]>(
+      `SELECT substr(fecha, 1, 7) AS mes, COALESCE(SUM(total), 0) AS recibos, COUNT(*) AS recibos_cantidad
+         FROM recibos WHERE anulado_en IS NULL AND fecha >= $1 AND fecha < $2 GROUP BY 1`,
+      [inicio, fin],
+    ),
+    db.select<{ n: number }[]>(
+      `SELECT COUNT(DISTINCT paciente_id) AS n FROM turnos
+        WHERE estado = 'realizado' AND inicio >= $1 AND inicio < $2`,
+      [inicio, fin],
+    ),
+    db.select<{ mes: string; monto: number }[]>("SELECT mes, monto FROM objetivos WHERE mes <= $1 ORDER BY mes", [hasta]),
+    db.select<Gasto[]>("SELECT * FROM gastos WHERE mes >= $1 AND mes <= $2 ORDER BY mes, fijo DESC, monto DESC, id", [
+      desde,
+      hasta,
+    ]),
+    db.select<FilaRecibo[]>("SELECT * FROM recibos WHERE fecha >= $1 AND fecha < $2 ORDER BY numero", [inicio, fin]),
+  ]);
+
+  const porMes = (filas: Fila[]) => new Map(filas.map((f) => [String(f.mes), f]));
+  const t = porMes(turnos);
+  const g = porMes(gastosMes);
+  const n = porMes(nuevos);
+  const r = porMes(recibosMes);
+  const num = (f: Fila | undefined, c: string) => Number(f?.[c] ?? 0);
+  const centavos = (f: Fila | undefined, c: string) => num(f, c) / 100;
+
+  const meses: DatosMesReporte[] = lista.map((mes) => {
+    const ft = t.get(mes);
+    return {
+      mes,
+      sesiones_realizadas: num(ft, "sesiones_realizadas"),
+      ingresos_sesiones: centavos(ft, "ingresos_sesiones"),
+      ingresos_ausencias: centavos(ft, "ingresos_ausencias"),
+      cobrado: centavos(ft, "cobrado"),
+      ausencias: num(ft, "ausencias"),
+      ausencias_sin_aviso: num(ft, "ausencias_sin_aviso"),
+      cancelados: num(ft, "cancelados"),
+      gastos: centavos(g.get(mes), "gastos"),
+      pacientes_activos: num(ft, "pacientes_activos"),
+      pacientes_nuevos: num(n.get(mes), "pacientes_nuevos"),
+      recibos: centavos(r.get(mes), "recibos"),
+      recibos_cantidad: num(r.get(mes), "recibos_cantidad"),
+    };
+  });
+
+  // Objetivo vigente en cada mes: el del mes o el del último mes anterior que tenga uno.
+  const objetivosPorMes: Record<string, number | null> = {};
+  let i = 0;
+  let vigente: number | null = null;
+  for (const mes of lista) {
+    while (i < objetivos.length && objetivos[i].mes <= mes) vigente = objetivos[i++].monto / 100;
+    objetivosPorMes[mes] = vigente;
+  }
+
+  return {
+    meses,
+    objetivos: objetivosPorMes,
+    pacientes_periodo: periodo[0]?.n ?? 0,
+    gastos: enPesos(gastos, ["monto"]),
+    recibos: recibos.map(aRecibo),
+  };
+}
+
+/** Primer mes (AAAA-MM) con turnos o gastos cargados, o null si la base está vacía. */
+export async function primerMesConDatos(db: Db): Promise<string | null> {
+  const [f] = await db.select<{ mes: string | null }[]>(
+    `SELECT MIN(mes) AS mes FROM (
+        SELECT substr(MIN(inicio), 1, 7) AS mes FROM turnos
+        UNION ALL SELECT MIN(mes) FROM gastos
+     )`,
+  );
+  return f?.mes ?? null;
+}

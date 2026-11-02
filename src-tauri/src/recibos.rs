@@ -27,8 +27,11 @@ fn validar_nombre(nombre: &str) -> Result<(), String> {
     if valido { Ok(()) } else { Err(format!("\"{nombre}\" no es un nombre de recibo válido.")) }
 }
 
-fn es_pdf(ruta: &Path) -> bool {
-    ruta.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+/// Solo se abren PDF (recibos y reportes) y planillas de Excel (reportes).
+fn es_documento(ruta: &Path) -> bool {
+    ruta.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf") || e.eq_ignore_ascii_case("xlsx"))
 }
 
 /// Guarda el PDF en la carpeta (la crea si hace falta) y devuelve la ruta completa.
@@ -52,12 +55,12 @@ pub fn guardar_recibo(carpeta: String, nombre: String, contenido: Vec<u8>) -> Re
     Ok(ruta.to_string_lossy().into_owned())
 }
 
-/// Abre el PDF con el programa predeterminado, o muestra la carpeta con el archivo elegido.
+/// Abre el PDF (o el Excel de un reporte) con el programa predeterminado, o muestra la carpeta con el archivo elegido.
 #[tauri::command]
 pub fn abrir_recibo(ruta: String, en_carpeta: bool) -> Result<(), String> {
     let ruta = PathBuf::from(ruta);
-    if !es_pdf(&ruta) || !ruta.is_file() {
-        return Err("No se encontró el recibo.".into());
+    if !es_documento(&ruta) || !ruta.is_file() {
+        return Err("No se encontró el archivo.".into());
     }
     let resultado = if cfg!(windows) {
         let mut comando = std::process::Command::new("explorer");
@@ -73,7 +76,7 @@ pub fn abrir_recibo(ruta: String, en_carpeta: bool) -> Result<(), String> {
         let destino = if en_carpeta { ruta.parent().unwrap_or(&ruta).to_path_buf() } else { ruta.clone() };
         std::process::Command::new("xdg-open").arg(destino).spawn()
     };
-    resultado.map(|_| ()).map_err(|e| format!("No se pudo abrir el recibo: {e}"))
+    resultado.map(|_| ()).map_err(|e| format!("No se pudo abrir el archivo: {e}"))
 }
 
 #[cfg(test)]
