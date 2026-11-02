@@ -1,5 +1,6 @@
 import { desdeIsoLocal } from "../fechas";
 import type { Turno } from "../tipos";
+import { liberaHorario } from "../ausencias/logica";
 
 type Intervalo = Pick<Turno, "inicio" | "duracion_min">;
 
@@ -14,13 +15,13 @@ export function seSuperponen(a: Intervalo, b: Intervalo): boolean {
   return ai < bf && bi < af;
 }
 
-/** Turnos activos (no cancelados) que se pisan con el turno dado, sin contarse a sí mismo. */
+/** Turnos que ocupan su horario (no cancelados ni ausencias avisadas) y se pisan con el turno dado, sin contarse a sí mismo. */
 export function turnosSuperpuestos<T extends Turno>(
   turno: Intervalo & { id?: number },
   existentes: T[],
 ): T[] {
   return existentes.filter(
-    (t) => t.id !== turno.id && t.estado !== "cancelado" && seSuperponen(turno, t),
+    (t) => t.id !== turno.id && !liberaHorario(t) && seSuperponen(turno, t),
   );
 }
 

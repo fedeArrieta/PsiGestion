@@ -11,6 +11,7 @@ import {
   listarNoLaborables,
   listarPacientes,
   listarTurnos,
+  leerPoliticaAusencias,
   modificarSerieDesde,
   obtenerSerie,
   previsualizarSerie,
@@ -40,6 +41,7 @@ import NotaModal from "../notas/NotaModal";
 import { periodoDe } from "./series";
 import { textoError } from "../errores";
 import { alCambiarDatos, ofrecerDeshacer } from "../papelera/deshacer";
+import { etiquetaEstado, POLITICA_POR_DEFECTO, type PoliticaAusencias } from "../ausencias/logica";
 
 type Vista = "semana" | "dia";
 type Edicion = { turno: TurnoConPaciente | null; inicioSugerido: string };
@@ -66,6 +68,7 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [noLaborables, setNoLaborables] = useState<NoLaborable[]>([]);
   const [verNoLaborables, setVerNoLaborables] = useState(false);
+  const [politica, setPolitica] = useState<PoliticaAusencias>(POLITICA_POR_DEFECTO);
 
   const dias = useMemo(() => {
     if (vista === "dia") return [referencia];
@@ -81,12 +84,14 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
       await extenderSeries(db, hoyIso(), ultimo);
       const desde = aIsoLocal(dias[0]);
       const hasta = aIsoLocal(sumarDias(dias[dias.length - 1], 1));
-      const [t, p, nl] = await Promise.all([
+      const [t, p, nl, pol] = await Promise.all([
         listarTurnos(db, desde, hasta),
         listarPacientes(db),
         listarNoLaborables(db, aFechaIso(dias[0]), ultimo),
+        leerPoliticaAusencias(db),
       ]);
       setTurnos(t);
+      setPolitica(pol);
       setPacientes(p);
       setNoLaborables(nl);
       setError(null);
@@ -140,6 +145,8 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
       inicio: r.inicio,
       duracion_min: r.duracion_min,
       estado: r.estado,
+      aviso: r.aviso,
+      cargo: r.cargo,
       notas: r.notas,
       pagado: r.pagado,
     };
@@ -231,7 +238,8 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
         <span><span className="punto ok" /> Programado</span>
         <span><span className="punto pendiente" /> Realizado, falta cobrar</span>
         <span><span className="punto pago" /> Pagado</span>
-        <span><span className="punto atencion" /> Ausente</span>
+        <span><span className="punto atencion" /> Ausente sin aviso</span>
+        <span><span className="punto atencion con-aviso" /> Ausente con aviso</span>
         <span><span className="punto" /> Cancelado</span>
         <span><Repeat size={12} /> Turno recurrente</span>
       </div>
@@ -283,14 +291,16 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
                 return (
                   <button
                     key={turno.id}
-                    className={`turno estado-${turno.estado}${turno.pagado ? " pagado" : ""}`}
+                    className={`turno estado-${turno.estado}${turno.aviso === "con_aviso" ? " con-aviso" : ""}${turno.pagado ? " pagado" : ""}`}
                     style={{
                       top,
                       height: alto,
                       left: `calc(${(columna / columnas) * 100}% + 2px)`,
                       width: `calc(${100 / columnas}% - 4px)`,
                     }}
-                    title={`${horaTexto(turno.inicio)} · ${turno.paciente_nombre}${turno.notas ? `\n${turno.notas}` : ""}`}
+                    title={`${horaTexto(turno.inicio)} · ${turno.paciente_nombre}${
+                      turno.estado === "programado" ? "" : ` · ${etiquetaEstado(turno)}`
+                    }${turno.notas ? `\n${turno.notas}` : ""}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setEdicion({ turno, inicioSugerido: turno.inicio });
@@ -315,6 +325,7 @@ export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean })
           pacientes={pacientes}
           turnosDeFecha={turnosDeFecha}
           duracionPredeterminada={DURACION_PREDETERMINADA}
+          politica={politica}
           cargarSerie={cargarSerie}
           previsualizar={previsualizar}
           onGuardar={guardar}

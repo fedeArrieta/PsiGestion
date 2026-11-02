@@ -1,5 +1,6 @@
 import type { Turno } from "../tipos";
 import { aFechaIso, desdeIsoLocal, sumarDias } from "../fechas";
+import { importeTurno } from "../ausencias/logica";
 
 /** Iniciales para el avatar: "María José González" → "MG". */
 export function iniciales(nombre: string): string {
@@ -22,14 +23,14 @@ export type TonoEstado = "ok" | "pendiente" | "pago" | "atencion" | "apagado";
  * Color de un turno según el sistema visual: verde agendado/confirmado, naranja realizado
  * y pendiente de cobro, azul pagado, rojo ausente (requiere atención), gris cancelado.
  */
-export function tonoTurno(t: Pick<Turno, "estado" | "pagado">): { tono: TonoEstado; etiqueta: string } {
+export function tonoTurno(t: Pick<Turno, "estado" | "pagado" | "aviso">): { tono: TonoEstado; etiqueta: string } {
   switch (t.estado) {
     case "programado":
       return { tono: "ok", etiqueta: "Confirmado" };
     case "realizado":
       return t.pagado ? { tono: "pago", etiqueta: "Pagado" } : { tono: "pendiente", etiqueta: "Pendiente de cobro" };
     case "ausente":
-      return { tono: "atencion", etiqueta: "Ausente" };
+      return { tono: "atencion", etiqueta: t.aviso === "con_aviso" ? "Ausente con aviso" : "Ausente sin aviso" };
     default:
       return { tono: "apagado", etiqueta: "Cancelado" };
   }
@@ -54,9 +55,9 @@ export function saludoDelMomento(ahora: Date): string {
   return "Que tengas una buena noche";
 }
 
-/** Suma de lo realizado (cobrado o no) en una lista de turnos. */
-export function sumaRealizada(turnos: Pick<Turno, "estado" | "monto">[]): number {
-  return turnos.reduce((acc, t) => (t.estado === "realizado" ? acc + t.monto : acc), 0);
+/** Suma de lo ganado (cobrado o no) en una lista de turnos: sesiones realizadas y ausencias que se cobran. */
+export function sumaRealizada(turnos: Pick<Turno, "estado" | "monto" | "cargo">[]): number {
+  return turnos.reduce((acc, t) => acc + importeTurno(t), 0);
 }
 
 /**

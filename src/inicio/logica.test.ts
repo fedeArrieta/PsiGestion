@@ -15,11 +15,12 @@ describe("inicio", () => {
   });
 
   it("asigna el color de cada estado", () => {
-    expect(tonoTurno({ estado: "programado", pagado: 0 }).tono).toBe("ok");
-    expect(tonoTurno({ estado: "realizado", pagado: 0 }).tono).toBe("pendiente");
-    expect(tonoTurno({ estado: "realizado", pagado: 1 }).tono).toBe("pago");
-    expect(tonoTurno({ estado: "ausente", pagado: 0 }).tono).toBe("atencion");
-    expect(tonoTurno({ estado: "cancelado", pagado: 0 }).tono).toBe("apagado");
+    expect(tonoTurno({ estado: "programado", pagado: 0, aviso: null }).tono).toBe("ok");
+    expect(tonoTurno({ estado: "realizado", pagado: 0, aviso: null }).tono).toBe("pendiente");
+    expect(tonoTurno({ estado: "realizado", pagado: 1, aviso: null }).tono).toBe("pago");
+    expect(tonoTurno({ estado: "ausente", pagado: 0, aviso: "sin_aviso" })).toEqual({ tono: "atencion", etiqueta: "Ausente sin aviso" });
+    expect(tonoTurno({ estado: "ausente", pagado: 0, aviso: "con_aviso" }).etiqueta).toBe("Ausente con aviso");
+    expect(tonoTurno({ estado: "cancelado", pagado: 0, aviso: null }).tono).toBe("apagado");
   });
 
   it("dice cuándo es un turno", () => {
@@ -35,14 +36,17 @@ describe("inicio", () => {
     expect(saludoDelMomento(new Date(2026, 0, 1, 22))).toMatch(/noche/);
   });
 
-  it("suma solo lo realizado", () => {
+  it("suma lo realizado y las ausencias que se cobran", () => {
     expect(
       sumaRealizada([
-        { estado: "realizado", monto: 100 },
-        { estado: "programado", monto: 50 },
-        { estado: "realizado", monto: 20 },
+        { estado: "realizado", monto: 100, cargo: null },
+        { estado: "programado", monto: 50, cargo: null },
+        { estado: "realizado", monto: 20, cargo: null },
+        { estado: "ausente", monto: 100, cargo: 50 },
+        { estado: "ausente", monto: 100, cargo: null },
+        { estado: "cancelado", monto: 100, cargo: null },
       ]),
-    ).toBe(120);
+    ).toBe(170);
   });
 
   it("toma el mismo tramo del mes anterior", () => {

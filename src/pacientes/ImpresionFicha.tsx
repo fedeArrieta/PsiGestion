@@ -1,11 +1,10 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { PacienteConResumen, Turno } from "../tipos";
-import { ESTADOS_TURNO } from "../tipos";
+import { etiquetaEstado, importeTurno, seCobra } from "../ausencias/logica";
 import { pesos } from "../formato";
 import { desdeIsoLocal, textoDiaLargo } from "../fechas";
 
-const etiquetaEstado = Object.fromEntries(ESTADOS_TURNO.map((e) => [e.valor, e.etiqueta]));
 const fmtFecha = new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 /**
@@ -33,7 +32,8 @@ export default function ImpresionFicha({
   }, [onTerminar]);
 
   const realizadas = turnos.filter((t) => t.estado === "realizado");
-  const saldo = realizadas.filter((t) => !t.pagado).reduce((acc, t) => acc + t.monto, 0);
+  const ausencias = turnos.filter((t) => t.estado === "ausente");
+  const saldo = turnos.filter((t) => !t.pagado).reduce((acc, t) => acc + importeTurno(t), 0);
   const ordenados = [...turnos].sort((a, b) => a.inicio.localeCompare(b.inicio));
 
   return createPortal(
@@ -51,6 +51,11 @@ export default function ImpresionFicha({
         <dd>{pesos(paciente.monto_sesion)}</dd>
         <dt>Sesiones realizadas</dt>
         <dd>{realizadas.length}</dd>
+        <dt>Ausencias</dt>
+        <dd>
+          {ausencias.length}
+          {ausencias.length > 0 && ` (${ausencias.filter((t) => t.aviso !== "con_aviso").length} sin aviso)`}
+        </dd>
         <dt>Saldo pendiente</dt>
         <dd>{pesos(saldo)}</dd>
       </dl>
@@ -81,9 +86,9 @@ export default function ImpresionFicha({
                 <tr key={t.id}>
                   <td>{fmtFecha.format(desdeIsoLocal(t.inicio))}</td>
                   <td>{t.inicio.slice(11, 16)}</td>
-                  <td>{etiquetaEstado[t.estado]}</td>
-                  <td className="num">{pesos(t.monto)}</td>
-                  <td>{t.pagado ? "Sí" : "No"}</td>
+                  <td>{etiquetaEstado(t)}</td>
+                  <td className="num">{seCobra(t) ? pesos(importeTurno(t)) : t.estado === "programado" ? pesos(t.monto) : "—"}</td>
+                  <td>{seCobra(t) ? (t.pagado ? "Sí" : "No") : ""}</td>
                   <td>{t.notas ?? ""}</td>
                 </tr>
               ))}

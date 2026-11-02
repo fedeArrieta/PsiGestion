@@ -1,5 +1,5 @@
 import type { DatosExportacion } from "../repositorio";
-import { ESTADOS_TURNO } from "../tipos";
+import { etiquetaEstado } from "../ausencias/logica";
 
 export type TipoColumna = "texto" | "numero" | "pesos";
 
@@ -9,7 +9,6 @@ export interface HojaExcel {
   filas: (string | number | null)[][];
 }
 
-const etiquetaEstado = Object.fromEntries(ESTADOS_TURNO.map((e) => [e.valor, e.etiqueta]));
 const siNo = (v: number) => (v ? "Sí" : "No");
 /** "2026-10-31T09:00" → "31/10/2026 09:00" */
 const fechaHora = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)} ${iso.slice(11, 16)}`;
@@ -37,8 +36,9 @@ export function hojasExportacion(datos: DatosExportacion): HojaExcel[] {
         { titulo: "Fecha y hora", ancho: 18 },
         { titulo: "Paciente", ancho: 28 },
         { titulo: "Duración (min)", tipo: "numero" },
-        { titulo: "Estado", ancho: 12 },
+        { titulo: "Estado", ancho: 18 },
         { titulo: "Monto", tipo: "pesos" },
+        { titulo: "Cobro por ausencia", tipo: "pesos" },
         { titulo: "Pagado", ancho: 8 },
         { titulo: "Notas", ancho: 40 },
       ],
@@ -46,8 +46,9 @@ export function hojasExportacion(datos: DatosExportacion): HojaExcel[] {
         fechaHora(t.inicio),
         t.paciente_nombre,
         t.duracion_min,
-        etiquetaEstado[t.estado] ?? t.estado,
+        etiquetaEstado(t) ?? t.estado,
         t.monto,
+        t.estado === "ausente" ? t.cargo : null,
         siNo(t.pagado),
         t.notas,
       ]),

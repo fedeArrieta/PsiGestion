@@ -1,4 +1,5 @@
 import type {
+  AvisoAusencia,
   EstadoTurno,
   Gasto,
   NoLaborable,
@@ -13,6 +14,7 @@ import type {
   VersionNota,
 } from "./tipos";
 import { seSuperponen } from "./agenda/logica";
+import { leerPolitica, CLAVE_CON_AVISO, CLAVE_SIN_AVISO, type PoliticaAusencias } from "./ausencias/logica";
 import { fechasDeSerie, horizonte, periodoDe, repartirFechas, sumarDiasFecha } from "./agenda/series";
 
 /** Lo mínimo que se usa de la base. En la app es tauri-plugin-sql; en los tests, SQLite de Node. */
@@ -44,7 +46,20 @@ export interface DatosTurno {
   notas?: string | null;
   /** Si no se indica, se mantiene como estaba. */
   pagado?: boolean;
+  /** Solo para ausencias: si el paciente avisó. Por defecto, sin aviso. */
+  aviso?: AvisoAusencia | null;
+  /** Solo para ausencias: lo que se cobra, en pesos. null o sin indicar = no se cobra. */
+  cargo?: number | null;
 }
+
+/**
+ * Lo que el paciente debe por un turno (sobre la tabla "t"), en centavos: la sesión
+ * realizada o el cargo de la ausencia. Igual que importeTurno en src/ausencias/logica.ts.
+ */
+const IMPORTE = `(CASE WHEN t.estado = 'realizado' THEN t.monto WHEN t.estado = 'ausente' THEN COALESCE(t.cargo, 0) ELSE 0 END)`;
+
+/** Turnos (sobre "t") que dejan libre el horario: cancelados y ausencias avisadas. */
+const LIBERA_HORARIO = `(t.estado = 'cancelado' OR (t.estado = 'ausente' AND t.aviso = 'con_aviso'))`;
 
 const vacioANull = (s?: string | null) => (s && s.trim() ? s.trim() : null);
 
@@ -97,22 +112,27 @@ export async function listarTurnos(db: Db, desde: string, hasta: string): Promis
       ORDER BY t.inicio, t.id`,
     [desde, hasta],
   );
-  return enPesos(filas, ["monto"]);
+  return enPesos(filas, ["monto", "cargo"]);
 }
 
-function validarTurno(datos: DatosTurno) {
+/** Valida y devuelve aviso y cargo (centavos) como se guardan: solo en ausencias. */
+function validarTurno(datos: DatosTurno): { aviso: AvisoAusencia | null; cargo: number | null } {
   if (!datos.paciente_id) throw new Error("Elegí un paciente.");
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(datos.inicio)) throw new Error("La fecha u hora no es válida.");
   if (!(datos.duracion_min > 0)) throw new Error("La duración tiene que ser mayor a cero.");
+  if (datos.estado !== "ausente") return { aviso: null, cargo: null };
+  const cargo = datos.cargo ?? null;
+  if (cargo !== null && !(cargo >= 0)) throw new Error("El monto a cobrar por la ausencia no es válido.");
+  return { aviso: datos.aviso ?? "sin_aviso", cargo: cargo === null ? null : aCentavos(cargo) };
 }
 
 /** Crea el turno copiando el monto por sesión actual del paciente. */
 export async function crearTurno(db: Db, datos: DatosTurno): Promise<number> {
-  validarTurno(datos);
+  const { aviso, cargo } = validarTurno(datos);
   const r = await db.execute(
-    `INSERT INTO turnos (paciente_id, inicio, duracion_min, estado, notas, monto)
-     VALUES ($1, $2, $3, $4, $5, (SELECT monto_sesion FROM pacientes WHERE id = $1))`,
-    [datos.paciente_id, datos.inicio, datos.duracion_min, datos.estado ?? "programado", vacioANull(datos.notas)],
+    `INSERT INTO turnos (paciente_id, inicio, duracion_min, estado, notas, monto, aviso, cargo)
+     VALUES ($1, $2, $3, $4, $5, (SELECT monto_sesion FROM pacientes WHERE id = $1), $6, $7)`,
+    [datos.paciente_id, datos.inicio, datos.duracion_min, datos.estado ?? "programado", vacioANull(datos.notas), aviso, cargo],
   );
   if (r.lastInsertId == null) throw new Error("No se pudo crear el turno.");
   return r.lastInsertId;
@@ -120,23 +140,18 @@ export async function crearTurno(db: Db, datos: DatosTurno): Promise<number> {
 
 /** Actualiza el turno. Si cambia el paciente, toma el monto del nuevo paciente. */
 export async function actualizarTurno(db: Db, id: number, datos: DatosTurno): Promise<void> {
-  validarTurno(datos);
+  const { aviso, cargo } = validarTurno(datos);
+  const estado = datos.estado ?? "programado";
+  // Un turno que deja de generar algo para cobrar (programado, cancelado, ausencia sin cargo) no queda "pagado".
+  const pagado = estado === "realizado" || cargo !== null ? (datos.pagado === undefined ? null : datos.pagado ? 1 : 0) : 0;
   await db.execute(
     `UPDATE turnos
         SET monto = CASE WHEN paciente_id = $1 THEN monto
                          ELSE (SELECT monto_sesion FROM pacientes WHERE id = $1) END,
             paciente_id = $1, inicio = $2, duracion_min = $3, estado = $4, notas = $5,
-            pagado = COALESCE($6, pagado)
-      WHERE id = $7`,
-    [
-      datos.paciente_id,
-      datos.inicio,
-      datos.duracion_min,
-      datos.estado ?? "programado",
-      vacioANull(datos.notas),
-      datos.pagado === undefined ? null : datos.pagado ? 1 : 0,
-      id,
-    ],
+            pagado = COALESCE($6, pagado), aviso = $7, cargo = $8
+      WHERE id = $9`,
+    [datos.paciente_id, datos.inicio, datos.duracion_min, estado, vacioANull(datos.notas), pagado, aviso, cargo, id],
   );
 }
 
@@ -147,7 +162,7 @@ function turnosAPapelera(condicion: string): string {
                  json_object('id', t.id, 'paciente_id', t.paciente_id, 'inicio', t.inicio,
                              'duracion_min', t.duracion_min, 'estado', t.estado, 'monto', t.monto,
                              'pagado', t.pagado, 'notas', t.notas, 'creado_en', t.creado_en,
-                             'serie_id', t.serie_id),
+                             'serie_id', t.serie_id, 'aviso', t.aviso, 'cargo', t.cargo),
                  'Turno de ' || p.nombre || ' (' || t.inicio || ')'
             FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
            WHERE ${condicion}`;
@@ -164,13 +179,14 @@ export async function eliminarTurno(db: Db, id: number): Promise<number | null> 
 
 /**
  * Pacientes con sus totales. "Saldo pendiente" es la suma de las sesiones
- * realizadas que todavía no se marcaron como pagadas.
+ * realizadas y de las ausencias que se cobran, que todavía no se marcaron como pagadas.
  */
 export async function listarPacientesConResumen(db: Db, incluirInactivos = false): Promise<PacienteConResumen[]> {
   const filas = await db.select<PacienteConResumen[]>(
     `SELECT p.*,
             COALESCE(SUM(t.estado = 'realizado'), 0) AS sesiones_realizadas,
-            COALESCE(SUM(CASE WHEN t.estado = 'realizado' AND t.pagado = 0 THEN t.monto END), 0) AS saldo_pendiente,
+            COALESCE(SUM(t.estado = 'ausente'), 0) AS ausencias,
+            COALESCE(SUM(CASE WHEN t.pagado = 0 THEN ${IMPORTE} END), 0) AS saldo_pendiente,
             MAX(CASE WHEN t.estado = 'realizado' THEN t.inicio END) AS ultima_sesion
        FROM pacientes p LEFT JOIN turnos t ON t.paciente_id = p.id
       WHERE $1 = 1 OR p.activo = 1
@@ -210,17 +226,18 @@ export async function listarTurnosDePaciente(db: Db, pacienteId: number): Promis
     "SELECT * FROM turnos WHERE paciente_id = $1 ORDER BY inicio DESC, id DESC",
     [pacienteId],
   );
-  return enPesos(filas, ["monto"]);
+  return enPesos(filas, ["monto", "cargo"]);
 }
 
 export async function marcarPagado(db: Db, turnoId: number, pagado: boolean): Promise<void> {
   await db.execute("UPDATE turnos SET pagado = $1 WHERE id = $2", [pagado ? 1 : 0, turnoId]);
 }
 
-/** Marca como pagadas todas las sesiones realizadas del paciente que estaban pendientes. */
+/** Marca como pagado todo lo pendiente del paciente: sesiones realizadas y ausencias que se cobran. */
 export async function saldarPaciente(db: Db, pacienteId: number): Promise<number> {
   const r = await db.execute(
-    "UPDATE turnos SET pagado = 1 WHERE paciente_id = $1 AND estado = 'realizado' AND pagado = 0",
+    `UPDATE turnos SET pagado = 1
+      WHERE paciente_id = $1 AND pagado = 0 AND (estado = 'realizado' OR (estado = 'ausente' AND cargo IS NOT NULL))`,
     [pacienteId],
   );
   return r.rowsAffected;
@@ -317,7 +334,7 @@ export async function previsualizarSerie(
   const otros = await db.select<(Pick<Turno, "inicio" | "duracion_min" | "serie_id"> & { paciente_nombre: string })[]>(
     `SELECT t.inicio, t.duracion_min, t.serie_id, p.nombre AS paciente_nombre
        FROM turnos t JOIN pacientes p ON p.id = t.paciente_id
-      WHERE t.estado <> 'cancelado' AND t.inicio >= $1 AND t.inicio < $2
+      WHERE NOT ${LIBERA_HORARIO} AND t.inicio >= $1 AND t.inicio < $2
         AND ($3 IS NULL OR t.serie_id IS NULL OR t.serie_id <> $3)`,
     [d.desde, sumarDiasFecha(limite, 1), excluirSerie ?? null],
   );
@@ -469,7 +486,7 @@ export interface ResultadoNoLaborable {
 
 const SERIE_EN_RANGO = "serie_id IS NOT NULL AND estado = 'programado' AND substr(inicio, 1, 10) BETWEEN $1 AND $2";
 const SUELTOS_EN_RANGO =
-  "(serie_id IS NULL OR estado <> 'programado') AND estado <> 'cancelado' AND substr(inicio, 1, 10) BETWEEN $1 AND $2";
+  "(serie_id IS NULL OR estado <> 'programado') AND estado NOT IN ('cancelado', 'ausente') AND substr(inicio, 1, 10) BETWEEN $1 AND $2";
 
 /**
  * Guarda el feriado o las vacaciones y quita los turnos programados de las
@@ -638,12 +655,16 @@ export async function resumenMes(db: Db, mes: string): Promise<ResumenMes> {
   if (!MES.test(mes)) throw new Error("El mes no es válido.");
   const [t] = await db.select<Omit<ResumenMes, "gastos" | "precio_promedio">[]>(
     `SELECT
-        COALESCE(SUM(CASE WHEN estado = 'realizado' THEN monto END), 0) AS facturado,
-        COALESCE(SUM(CASE WHEN estado = 'realizado' AND pagado = 1 THEN monto END), 0) AS cobrado,
-        COALESCE(SUM(estado = 'realizado'), 0) AS sesiones_realizadas,
-        COALESCE(SUM(CASE WHEN estado = 'programado' THEN monto END), 0) AS programado,
-        COALESCE(SUM(estado = 'programado'), 0) AS sesiones_programadas
-       FROM turnos WHERE substr(inicio, 1, 7) = $1`,
+        COALESCE(SUM(${IMPORTE}), 0) AS facturado,
+        COALESCE(SUM(CASE WHEN t.pagado = 1 THEN ${IMPORTE} END), 0) AS cobrado,
+        COALESCE(SUM(t.estado = 'realizado'), 0) AS sesiones_realizadas,
+        COALESCE(SUM(t.estado = 'ausente'), 0) AS ausencias,
+        COALESCE(SUM(t.estado = 'ausente' AND t.aviso IS NOT 'con_aviso'), 0) AS ausencias_sin_aviso,
+        COALESCE(SUM(CASE WHEN t.estado = 'ausente' THEN t.cargo END), 0) AS cargos_ausencias,
+        COALESCE(SUM(t.estado = 'cancelado'), 0) AS cancelados,
+        COALESCE(SUM(CASE WHEN t.estado = 'programado' THEN t.monto END), 0) AS programado,
+        COALESCE(SUM(t.estado = 'programado'), 0) AS sesiones_programadas
+       FROM turnos t WHERE substr(t.inicio, 1, 7) = $1`,
     [mes],
   );
   const [g] = await db.select<{ total: number }[]>(
@@ -663,6 +684,7 @@ export async function resumenMes(db: Db, mes: string): Promise<ResumenMes> {
     ...t,
     facturado: t.facturado / 100,
     cobrado: t.cobrado / 100,
+    cargos_ausencias: t.cargos_ausencias / 100,
     programado: t.programado / 100,
     gastos: g.total / 100,
     precio_promedio: (p.promedio ?? 0) / 100,
@@ -676,11 +698,25 @@ export async function leerConfiguracion(db: Db): Promise<Record<string, string>>
   return Object.fromEntries(filas.filter((f) => f.valor != null).map((f) => [f.clave, f.valor as string]));
 }
 
+const CONFIG_UPSERT =
+  "INSERT INTO configuracion (clave, valor) VALUES ($1, $2) ON CONFLICT (clave) DO UPDATE SET valor = excluded.valor";
+
 export async function guardarConfiguracion(db: Db, clave: string, valor: string | null): Promise<void> {
-  await db.execute(
-    "INSERT INTO configuracion (clave, valor) VALUES ($1, $2) ON CONFLICT (clave) DO UPDATE SET valor = excluded.valor",
-    [clave, valor],
-  );
+  await db.execute(CONFIG_UPSERT, [clave, valor]);
+}
+
+export async function leerPoliticaAusencias(db: Db): Promise<PoliticaAusencias> {
+  return leerPolitica(await leerConfiguracion(db));
+}
+
+export async function guardarPoliticaAusencias(db: Db, p: PoliticaAusencias): Promise<void> {
+  for (const v of [p.sinAvisoPct, p.conAvisoPct]) {
+    if (!(v >= 0 && v <= 100)) throw new Error("El porcentaje tiene que estar entre 0 y 100.");
+  }
+  await db.transaccion([
+    { sql: CONFIG_UPSERT, params: [CLAVE_SIN_AVISO, String(p.sinAvisoPct)] },
+    { sql: CONFIG_UPSERT, params: [CLAVE_CON_AVISO, String(p.conAvisoPct)] },
+  ]);
 }
 
 /** Copia consistente de toda la base en un archivo nuevo (que no debe existir). */
@@ -719,7 +755,7 @@ export async function datosParaExportar(db: Db, mes: string | null): Promise<Dat
   ]);
   return {
     pacientes: enPesos(pacientes, ["monto_sesion"]),
-    turnos: enPesos(turnos, ["monto"]),
+    turnos: enPesos(turnos, ["monto", "cargo"]),
     gastos: enPesos(gastos, ["monto"]),
   };
 }
@@ -775,11 +811,16 @@ export async function restaurarDePapelera(db: Db, id: number): Promise<void> {
                 json_extract(datos, '$.creado_en'), json_extract(datos, '$.modificado_en')
            FROM papelera WHERE id = $1`
       : elemento.tipo === "turno"
-      ? `INSERT INTO turnos (id, paciente_id, inicio, duracion_min, estado, monto, pagado, notas, creado_en, serie_id)
+      ? `INSERT INTO turnos (id, paciente_id, inicio, duracion_min, estado, monto, pagado, notas, creado_en, serie_id,
+                             aviso, cargo)
          SELECT json_extract(datos, '$.id'), json_extract(datos, '$.paciente_id'), json_extract(datos, '$.inicio'),
                 json_extract(datos, '$.duracion_min'), json_extract(datos, '$.estado'), json_extract(datos, '$.monto'),
                 json_extract(datos, '$.pagado'), json_extract(datos, '$.notas'), json_extract(datos, '$.creado_en'),
-                (SELECT s.id FROM series s WHERE s.id = json_extract(datos, '$.serie_id'))
+                (SELECT s.id FROM series s WHERE s.id = json_extract(datos, '$.serie_id')),
+                -- Turnos que fueron a la papelera antes de la versión 0.6.0 no tienen aviso ni cargo.
+                CASE WHEN json_extract(datos, '$.estado') = 'ausente'
+                     THEN COALESCE(json_extract(datos, '$.aviso'), 'sin_aviso') END,
+                json_extract(datos, '$.cargo')
            FROM papelera WHERE id = $1`
       : `INSERT INTO gastos (id, mes, descripcion, monto, fijo, creado_en)
          SELECT json_extract(datos, '$.id'), json_extract(datos, '$.mes'), json_extract(datos, '$.descripcion'),

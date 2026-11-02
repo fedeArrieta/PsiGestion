@@ -8,14 +8,19 @@ describe("exportación", () => {
       turnos: [
         {
           id: 1, paciente_id: 1, paciente_nombre: "Ana", inicio: "2026-10-31T09:00", duracion_min: 50,
-          estado: "realizado", monto: 25000, pagado: 0, notas: null, serie_id: null,
+          estado: "realizado", monto: 25000, pagado: 0, notas: null, serie_id: null, aviso: null, cargo: null,
+        },
+        {
+          id: 2, paciente_id: 1, paciente_nombre: "Ana", inicio: "2026-11-07T09:00", duracion_min: 50,
+          estado: "ausente", monto: 25000, pagado: 0, notas: null, serie_id: null, aviso: "sin_aviso", cargo: 12500,
         },
       ],
       gastos: [{ id: 1, mes: "2026-10", descripcion: "Alquiler", monto: 100000, fijo: 1 }],
     });
     expect(hojas.map((h) => h.nombre)).toEqual(["Pacientes", "Turnos", "Gastos"]);
     expect(hojas[0].filas[0]).toEqual(["Ana", null, null, 25000, "Sí", null]);
-    expect(hojas[1].filas[0]).toEqual(["31/10/2026 09:00", "Ana", 50, "Realizado", 25000, "No", null]);
+    expect(hojas[1].filas[0]).toEqual(["31/10/2026 09:00", "Ana", 50, "Realizado", 25000, null, "No", null]);
+    expect(hojas[1].filas[1]).toEqual(["07/11/2026 09:00", "Ana", 50, "Ausente sin aviso", 25000, 12500, "No", null]);
     expect(hojas[2].filas[0]).toEqual(["10/2026", "Alquiler", 100000, "Sí"]);
     for (const h of hojas) for (const f of h.filas) expect(f).toHaveLength(h.columnas.length);
   });
