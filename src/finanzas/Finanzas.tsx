@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { obtenerDb } from "../db";
 import {
@@ -57,11 +58,11 @@ export default function Finanzas() {
   return (
     <div className="finanzas">
       <div className="barra">
-        <button aria-label="Mes anterior" onClick={() => setMes((m) => sumarMeses(m, -1))}>
-          ‹
+        <button className="icono-solo" aria-label="Mes anterior" onClick={() => setMes((m) => sumarMeses(m, -1))}>
+          <ChevronLeft size={18} />
         </button>
-        <button aria-label="Mes siguiente" onClick={() => setMes((m) => sumarMeses(m, 1))}>
-          ›
+        <button className="icono-solo" aria-label="Mes siguiente" onClick={() => setMes((m) => sumarMeses(m, 1))}>
+          <ChevronRight size={18} />
         </button>
         <h2 className="titulo-agenda">{textoMes(mes)}</h2>
         {mes !== mesDe(new Date()) && <button onClick={() => setMes(mesDe(new Date()))}>Mes actual</button>}

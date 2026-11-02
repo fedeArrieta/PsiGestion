@@ -1,3 +1,4 @@
+import { Logo } from "../marca/Logo";
 import { useState, type FormEvent } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -32,7 +33,7 @@ export default function Acceso({ estado, onListo }: { estado: EstadoAcceso; onLi
   return (
     <div className="acceso">
       <div className="acceso-tarjeta">
-        <h1 className="marca">PsiGestion</h1>
+        <Logo lema tamano={56} />
         {contenido}
       </div>
     </div>

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarPlus, ChevronLeft, ChevronRight } from "lucide-react";
 import { obtenerDb } from "../db";
 import {
   actualizarTurno,
@@ -37,7 +38,8 @@ const turnosDeFecha = async (fecha: string) => {
   return listarTurnos(await obtenerDb(), aIsoLocal(dia), aIsoLocal(sumarDias(dia, 1)));
 };
 
-export default function Agenda() {
+/** abrirNuevo: abre la ventana de turno nuevo al entrar (desde "Nuevo turno" en Inicio). */
+export default function Agenda({ abrirNuevo = false }: { abrirNuevo?: boolean }) {
   const [vista, setVista] = useState<Vista>("semana");
   const [referencia, setReferencia] = useState(() => inicioDelDia(new Date()));
   const [turnos, setTurnos] = useState<TurnoConPaciente[]>([]);
@@ -119,6 +121,25 @@ export default function Agenda() {
     await cargar();
   }
 
+  function nuevoTurno() {
+    const hoy = new Date();
+    const muestraHoy = dias.some((d) => mismoDia(d, hoy));
+    const base = vista === "dia" ? referencia : muestraHoy ? hoy : dias[0];
+    const hora = mismoDia(base, hoy) ? Math.max(HORA_INICIO, Math.min(hoy.getHours() + 1, HORA_FIN - 1)) : HORA_INICIO;
+    const inicio = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hora, 0);
+    setEdicion({ turno: null, inicioSugerido: aIsoLocal(inicio) });
+  }
+
+  const abrioNuevo = useRef(false);
+  useEffect(() => {
+    if (abrirNuevo && !abrioNuevo.current) {
+      abrioNuevo.current = true;
+      nuevoTurno();
+    }
+    // Solo al entrar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirNuevo]);
+
   const hoy = new Date();
   const titulo = vista === "semana" ? textoSemana(dias[0]) : textoDiaLargo(referencia);
 
@@ -126,27 +147,28 @@ export default function Agenda() {
     <div className="agenda">
       <div className="barra">
         <button onClick={() => setReferencia(inicioDelDia(new Date()))}>Hoy</button>
-        <button aria-label="Anterior" onClick={() => mover(-1)}>‹</button>
-        <button aria-label="Siguiente" onClick={() => mover(1)}>›</button>
+        <button className="icono-solo" aria-label="Anterior" onClick={() => mover(-1)}>
+          <ChevronLeft size={18} />
+        </button>
+        <button className="icono-solo" aria-label="Siguiente" onClick={() => mover(1)}>
+          <ChevronRight size={18} />
+        </button>
         <h2 className="titulo-agenda">{titulo}</h2>
         <div className="selector">
           <button className={vista === "dia" ? "activo" : ""} onClick={() => setVista("dia")}>Día</button>
           <button className={vista === "semana" ? "activo" : ""} onClick={() => setVista("semana")}>Semana</button>
         </div>
-        <button
-          className="primario"
-          onClick={() => {
-            const muestraHoy = dias.some((d) => mismoDia(d, hoy));
-            const base = vista === "dia" ? referencia : muestraHoy ? hoy : dias[0];
-            const hora = mismoDia(base, hoy)
-              ? Math.max(HORA_INICIO, Math.min(hoy.getHours() + 1, HORA_FIN - 1))
-              : HORA_INICIO;
-            const inicio = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hora, 0);
-            setEdicion({ turno: null, inicioSugerido: aIsoLocal(inicio) });
-          }}
-        >
-          + Nuevo turno
+        <button className="primario" onClick={nuevoTurno}>
+          <CalendarPlus size={18} className="icono" /> Nuevo turno
         </button>
+      </div>
+
+      <div className="leyenda-agenda">
+        <span><span className="punto ok" /> Programado</span>
+        <span><span className="punto pendiente" /> Realizado, falta cobrar</span>
+        <span><span className="punto pago" /> Pagado</span>
+        <span><span className="punto atencion" /> Ausente</span>
+        <span><span className="punto" /> Cancelado</span>
       </div>
 
       {error && <p className="error">{error}</p>}
@@ -183,7 +205,7 @@ export default function Agenda() {
                 return (
                   <button
                     key={turno.id}
-                    className={`turno estado-${turno.estado}`}
+                    className={`turno estado-${turno.estado}${turno.pagado ? " pagado" : ""}`}
                     style={{
                       top,
                       height: alto,

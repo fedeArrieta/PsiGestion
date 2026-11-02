@@ -1,3 +1,4 @@
+import { Search, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { obtenerDb } from "../db";
 import { listarPacientesConResumen } from "../repositorio";
@@ -50,19 +51,24 @@ export default function Pacientes() {
     <div className="pacientes">
       <div className="barra">
         <h2 className="titulo-agenda">Pacientes</h2>
-        <input
-          className="buscador"
-          type="search"
-          placeholder="Buscar por nombre, teléfono o email…"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-        />
+        <label className="campo-buscar">
+          <Search size={17} className="icono" />
+          <input
+            className="buscador"
+            type="search"
+            placeholder="Buscar paciente…"
+            aria-label="Buscar por nombre, teléfono o email"
+            title="Buscá por nombre, teléfono o email"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </label>
         <label className="check">
           <input type="checkbox" checked={verBajas} onChange={(e) => setVerBajas(e.target.checked)} />
           Ver dados de baja
         </label>
         <button className="primario" onClick={() => setAbierto("nuevo")}>
-          + Nuevo paciente
+          <UserPlus size={18} className="icono" /> Nuevo paciente
         </button>
       </div>
 
@@ -75,7 +81,7 @@ export default function Pacientes() {
       )}
 
       {pacientes.length === 0 ? (
-        <p className="pendiente">Todavía no hay pacientes. Agregá el primero con "+ Nuevo paciente".</p>
+        <p className="vacio-panel">Todavía no hay pacientes. Agregá el primero con "Nuevo paciente".</p>
       ) : (
         <div className="tabla-contenedor">
           <table className="tabla">

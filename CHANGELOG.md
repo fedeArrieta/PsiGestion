@@ -2,6 +2,19 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.3.0] - 2026-11-01
+
+### Nuevo
+
+- Diseño nuevo con la identidad de PsiGestion: verde salvia y verde bosque, tipografía Plus Jakarta Sans e íconos en todo el menú.
+- Pantalla de Inicio: saludo con tu nombre, turnos de hoy, pacientes activos, ingresos del mes comparados con el mes anterior, saldo por cobrar, próximos turnos y avance del objetivo.
+- Tema claro y oscuro: por defecto sigue a Windows; se puede fijar desde el menú.
+- Logo e ícono de la app nuevos.
+
+### Mejoras
+
+- Colores de estado en la agenda: verde programado, naranja realizado sin cobrar, azul pagado, rojo ausente y gris cancelado.
+
 ## [0.2.1] - 2026-11-01
 
 ### Mejoras
