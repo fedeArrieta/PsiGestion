@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import {
   AlertTriangle,
+  BellRing,
   CalendarDays,
   CalendarX2,
   ChartColumn,
@@ -20,13 +21,14 @@ import {
 } from "lucide-react";
 import { obtenerDb } from "./db";
 import {
+  contarRecordatoriosPendientes,
   extenderSeries,
   guardarConfiguracion,
   leerConfiguracion,
   vaciarPapeleraVencida,
   verificarIntegridad,
 } from "./repositorio";
-import { aFechaIso, aIsoLocal } from "./fechas";
+import { aFechaIso, aIsoLocal, inicioDelDia, sumarDias } from "./fechas";
 import Copias from "./copias/Copias";
 import { copiaAtrasada, diasSinCopia } from "./copias/logica";
 import { copiaAutomaticaSiCorresponde, leerConfigCopias, resultadoRestauracion } from "./copias/servicio";
@@ -38,6 +40,7 @@ import { guardarTema, leerTema, NOMBRE_TEMA, SIGUIENTE_TEMA, type Tema } from ".
 import Pacientes from "./pacientes/Pacientes";
 import Finanzas from "./finanzas/Finanzas";
 import NotasClinicas from "./notas/NotasClinicas";
+import Recordatorios from "./recordatorios/Recordatorios";
 import Acceso from "./seguridad/Acceso";
 import Papelera, { BarraDeshacer } from "./papelera/Papelera";
 import Seguridad, { leerMinutosBloqueo } from "./seguridad/Seguridad";
@@ -49,14 +52,16 @@ import { hayNovedadesSinVer } from "./actualizacion/logica";
 import type { Update } from "@tauri-apps/plugin-updater";
 import "./App.css";
 import { textoError } from "./errores";
+import { alCambiarDatos } from "./papelera/deshacer";
 
-type Seccion = "inicio" | "agenda" | "pacientes" | "notas" | "finanzas" | "copias" | "papelera" | "seguridad" | "ausencias" | "version";
+type Seccion = "inicio" | "agenda" | "recordatorios" | "pacientes" | "notas" | "finanzas" | "copias" | "papelera" | "seguridad" | "ausencias" | "version";
 
 type Icono = ComponentType<LucideProps>;
 
 const SECCIONES: { id: Seccion; titulo: string; icono: Icono }[] = [
   { id: "inicio", titulo: "Inicio", icono: House },
   { id: "agenda", titulo: "Agenda", icono: CalendarDays },
+  { id: "recordatorios", titulo: "Recordatorios", icono: BellRing },
   { id: "pacientes", titulo: "Pacientes", icono: Users },
   { id: "notas", titulo: "Notas clínicas", icono: NotebookPen },
   { id: "finanzas", titulo: "Finanzas", icono: ChartColumn },
@@ -278,6 +283,22 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
     return () => window.clearInterval(intervalo);
   }, [revisarCopias]);
 
+  // Recordatorios de mañana sin enviar (se muestra el número en el menú).
+  const [recordatoriosPendientes, setRecordatoriosPendientes] = useState(0);
+  const contarRecordatorios = useCallback(() => {
+    if (estadoDb.tipo !== "ok") return;
+    (async () => {
+      const manana = aFechaIso(sumarDias(inicioDelDia(new Date()), 1));
+      setRecordatoriosPendientes(await contarRecordatoriosPendientes(await obtenerDb(), manana));
+    })().catch(() => {});
+  }, [estadoDb.tipo]);
+  useEffect(contarRecordatorios, [contarRecordatorios, seccion]);
+  useEffect(() => alCambiarDatos(contarRecordatorios), [contarRecordatorios]);
+  useEffect(() => {
+    const intervalo = window.setInterval(contarRecordatorios, REVISAR_COPIA_MS);
+    return () => window.clearInterval(intervalo);
+  }, [contarRecordatorios]);
+
   const avisos = [avisoIntegridad, avisoRestauracion, avisoCopias, avisoNovedades].filter((a): a is Aviso => a !== null);
 
   return (
@@ -285,7 +306,14 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
       <nav className="menu">
         <Logo tamano={40} />
         {SECCIONES.map((s) => (
-          <ItemMenu key={s.id} {...s} activo={s.id === seccion} onClick={() => setSeccion(s.id)} />
+          <ItemMenu
+            key={s.id}
+            {...s}
+            activo={s.id === seccion}
+            insignia={s.id === "recordatorios" && recordatoriosPendientes ? recordatoriosPendientes : undefined}
+            tituloInsignia={`${recordatoriosPendientes} ${recordatoriosPendientes === 1 ? "turno" : "turnos"} de mañana sin recordatorio`}
+            onClick={() => setSeccion(s.id)}
+          />
         ))}
         <div className="menu-grupo">Configuración</div>
         {SECCIONES_CONFIGURACION.map((s) => (
@@ -336,6 +364,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         {actualizacion && <AvisoActualizacion update={actualizacion} onCerrar={() => setActualizacion(null)} />}
         {seccion === "inicio" && <Inicio nombre={nombre} onNombre={cambiarNombre} onIr={irDesdeInicio} />}
         {seccion === "agenda" && <Agenda abrirNuevo={abrirNuevoTurno} />}
+        {seccion === "recordatorios" && <Recordatorios />}
         {seccion === "pacientes" && <Pacientes />}
         {seccion === "notas" && <NotasClinicas />}
         {seccion === "finanzas" && <Finanzas />}
@@ -355,18 +384,27 @@ function ItemMenu({
   icono: IconoItem,
   activo = false,
   chico = false,
+  insignia,
+  tituloInsignia,
   onClick,
 }: {
   titulo: string;
   icono: Icono;
   activo?: boolean;
   chico?: boolean;
+  insignia?: number;
+  tituloInsignia?: string;
   onClick: () => void;
 }) {
   return (
     <button className={`item${activo ? " activo" : ""}${chico ? " chico" : ""}`} onClick={onClick} aria-current={activo ? "page" : undefined}>
       <IconoItem size={chico ? 17 : 19} className="icono" />
       {titulo}
+      {insignia ? (
+        <span className="insignia" title={tituloInsignia}>
+          {insignia}
+        </span>
+      ) : null}
     </button>
   );
 }

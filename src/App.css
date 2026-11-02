@@ -2127,3 +2127,144 @@ button.boton-icono.con-nota {
 .diario-cabecera .nota {
   white-space: nowrap;
 }
+
+/* ---------- Recordatorios ---------- */
+
+.recordatorios {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.recordatorios .nota {
+  max-width: 820px;
+}
+
+.aviso-ok {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radio);
+  color: var(--ok);
+  background: var(--ok-suave);
+}
+
+.recordatorios-columnas {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .recordatorios-columnas {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lista-recordatorios {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recordatorio {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--pendiente);
+  border-radius: var(--radio);
+  background: var(--superficie-suave);
+}
+
+.recordatorio.enviado {
+  border-left-color: var(--ok);
+}
+
+.recordatorio-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.recordatorio-paciente {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.recordatorio-paciente span {
+  font-size: 0.82rem;
+  color: var(--texto-suave);
+  overflow-wrap: anywhere;
+}
+
+.recordatorio-texto {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radio);
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  font-size: 0.88rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.recordatorio-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.recordatorio-acciones button.enlace,
+.recordatorio-plantilla button.enlace {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.recordatorio-plantilla .campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.recordatorio-plantilla textarea {
+  resize: vertical;
+  color: var(--texto);
+}
+
+.variables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.variables button.chip {
+  border: 1px solid var(--borde);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.insignia {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--tierra);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}

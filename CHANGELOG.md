@@ -2,6 +2,20 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.7.0] - 2026-11-02
+
+### Nuevo
+
+- Recordatorios de turnos: la sección "Recordatorios" del menú muestra los turnos de mañana (o del día que elijas) y, para cada uno, el mensaje ya escrito. El botón "WhatsApp" lo abre en WhatsApp (en la aplicación o en WhatsApp Web) listo para enviar, y "Mail" lo abre en tu programa de correo con el asunto completo. También se puede copiar el mensaje para pegarlo en otro lado.
+- La app recuerda qué recordatorios ya enviaste ("Enviado" con la hora) y el menú muestra cuántos turnos de mañana todavía no tienen el suyo. Si un turno cambia de día u hora, vuelve a quedar sin enviar.
+- El mensaje se puede editar: texto, asunto del mail y datos que se completan solos ({nombre}, {dia}, {fecha}, {hora} y {profesional}), con una vista previa.
+- Los turnos cancelados y las ausencias avisadas no aparecen; los turnos recurrentes sí, como cualquier otro turno.
+- Los teléfonos se pasan solos al formato de WhatsApp (por ejemplo, 011 15 1234-5678 → +54 9 11 1234-5678). Si falta la característica, la app avisa para corregirlo en la ficha del paciente.
+
+### Privacidad
+
+- Los mensajes llevan solo el nombre del paciente, el día y la hora: nunca notas ni datos clínicos. No se manda nada solo; siempre lo revisás y lo enviás vos. La app solo tiene permiso para abrir enlaces de WhatsApp (wa.me) y de correo.
+
 ## [0.6.0] - 2026-11-02
 
 ### Nuevo
