@@ -13,7 +13,7 @@ import {
   turnosConNota,
 } from "../repositorio";
 import type { NotaClinica, Paciente, SeccionNota, Turno, VersionNota } from "../tipos";
-import { ESTADOS_TURNO } from "../tipos";
+import { etiquetaEstado } from "../ausencias/logica";
 import { aFechaIso, aIsoLocal, desdeIsoLocal } from "../fechas";
 import { textoError } from "../errores";
 import { ofrecerDeshacer } from "../papelera/deshacer";
@@ -35,10 +35,9 @@ interface Props {
   onCerrar: () => void;
 }
 
-const etiquetaEstado = Object.fromEntries(ESTADOS_TURNO.map((e) => [e.valor, e.etiqueta]));
 const fmtSesion = new Intl.DateTimeFormat("es-AR", { weekday: "short", day: "numeric", month: "numeric", year: "2-digit" });
 const textoSesion = (t: Turno) =>
-  `${fmtSesion.format(desdeIsoLocal(t.inicio))} · ${t.inicio.slice(11, 16)} (${etiquetaEstado[t.estado].toLowerCase()})`;
+  `${fmtSesion.format(desdeIsoLocal(t.inicio))} · ${t.inicio.slice(11, 16)} (${etiquetaEstado(t).toLowerCase()})`;
 
 interface Borrador {
   paciente_id: number | null;

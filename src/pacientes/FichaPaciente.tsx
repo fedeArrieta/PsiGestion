@@ -12,7 +12,7 @@ import {
   turnosConNota,
 } from "../repositorio";
 import type { PacienteConResumen, Turno } from "../tipos";
-import { ESTADOS_TURNO } from "../tipos";
+import { etiquetaEstado, importeTurno, seCobra } from "../ausencias/logica";
 import { leerMonto, montoEditable, pesos } from "../formato";
 import { aIsoLocal, desdeIsoLocal } from "../fechas";
 import ImpresionFicha from "./ImpresionFicha";
@@ -33,8 +33,6 @@ export type Pestana = "sesiones" | "diario";
 
 const fmtFecha = new Intl.DateTimeFormat("es-AR", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" });
 const fmtTurno = { format: (d: Date) => `${fmtFecha.format(d)} · ${aIsoLocal(d).slice(11, 16)}` };
-
-const etiquetaEstado = Object.fromEntries(ESTADOS_TURNO.map((e) => [e.valor, e.etiqueta]));
 
 export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaInicial = "sesiones" }: Props) {
   const [nombre, setNombre] = useState(paciente?.nombre ?? "");
@@ -128,8 +126,8 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
     });
   };
 
-  const pendientes = turnos.filter((t) => t.estado === "realizado" && !t.pagado);
-  const saldo = pendientes.reduce((acc, t) => acc + t.monto, 0);
+  // Saldo: sesiones realizadas y ausencias que se cobran, sin pagar.
+  const saldo = turnos.filter((t) => !t.pagado).reduce((acc, t) => acc + importeTurno(t), 0);
 
   return (
     <>
@@ -225,8 +223,16 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
                 {turnos.map((t) => (
                   <li key={t.id} className={`estado-${t.estado}`}>
                     <span className="crece">{fmtTurno.format(desdeIsoLocal(t.inicio))}</span>
-                    <span className="estado">{etiquetaEstado[t.estado]}</span>
-                    <span className="num">{pesos(t.monto)}</span>
+                    <span className="estado">{etiquetaEstado(t)}</span>
+                    <span className="num" title={t.estado === "ausente" ? (t.cargo != null ? "Se cobra la ausencia" : "La ausencia no se cobra") : undefined}>
+                      {t.estado === "ausente"
+                        ? t.cargo != null
+                          ? pesos(t.cargo)
+                          : "Sin cargo"
+                        : t.estado === "cancelado"
+                          ? "—"
+                          : pesos(t.monto)}
+                    </span>
                     <button
                       type="button"
                       className={`boton-icono${conNota.has(t.id) ? " con-nota" : ""}`}
@@ -238,7 +244,7 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
                     >
                       <NotebookPen size={15} />
                     </button>
-                    <label className="check" title="Pagado">
+                    <label className={seCobra(t) || t.pagado ? "check" : "check sin-cobro"} title="Pagado">
                       <input type="checkbox" checked={Boolean(t.pagado)} onChange={() => alternarPago(t)} disabled={ocupado} />
                       Pagado
                     </label>

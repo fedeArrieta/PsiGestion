@@ -54,6 +54,8 @@ import {
   notaDeTurno,
   obtenerNota,
   turnosConNota,
+  guardarPoliticaAusencias,
+  leerPoliticaAusencias,
   type Db,
 } from "./repositorio";
 
@@ -273,6 +275,10 @@ describe("repositorio", () => {
         facturado: 40000,
         cobrado: 25000,
         sesiones_realizadas: 2,
+        ausencias: 1,
+        ausencias_sin_aviso: 1,
+        cargos_ausencias: 0,
+        cancelados: 1,
         programado: 25000,
         sesiones_programadas: 1,
         gastos: 100000,
@@ -705,6 +711,140 @@ describe("repositorio", () => {
       const ana = await crearPaciente(db, { nombre: "Ana" });
       await crearNota(db, { paciente_id: ana, fecha: "2026-11-03", plantilla: "sesion", secciones: secciones("Secreto") });
       expect(JSON.stringify(await datosParaExportar(db, null))).not.toContain("Secreto");
+    });
+  });
+
+  describe("ausencias y cancelaciones", () => {
+    const base = { inicio: "2026-11-03T10:00", duracion_min: 50 };
+
+    it("una ausencia sin cobro no suma al saldo; con cobro, sí", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 20000 });
+      const t1 = await crearTurno(db, { paciente_id: ana, ...base });
+      const t2 = await crearTurno(db, { paciente_id: ana, ...base, inicio: "2026-11-10T10:00" });
+      const t3 = await crearTurno(db, { paciente_id: ana, ...base, inicio: "2026-11-17T10:00" });
+      await actualizarTurno(db, t1, { paciente_id: ana, ...base, estado: "realizado" });
+      await actualizarTurno(db, t2, { paciente_id: ana, ...base, inicio: "2026-11-10T10:00", estado: "ausente", aviso: "con_aviso" });
+      await actualizarTurno(db, t3, {
+        paciente_id: ana, ...base, inicio: "2026-11-17T10:00", estado: "ausente", aviso: "sin_aviso", cargo: 10000.5,
+      });
+
+      const [p] = await listarPacientesConResumen(db);
+      expect(p).toMatchObject({ sesiones_realizadas: 1, ausencias: 2, saldo_pendiente: 30000.5 });
+      const turnos = await listarTurnosDePaciente(db, ana);
+      expect(turnos.find((t) => t.id === t2)).toMatchObject({ aviso: "con_aviso", cargo: null });
+      expect(turnos.find((t) => t.id === t3)).toMatchObject({ aviso: "sin_aviso", cargo: 10000.5 });
+
+      expect(await saldarPaciente(db, ana)).toBe(2);
+      expect((await listarPacientesConResumen(db))[0].saldo_pendiente).toBe(0);
+      expect((await listarTurnosDePaciente(db, ana)).find((t) => t.id === t2)!.pagado).toBe(0);
+    });
+
+    it("aviso y cargo solo se guardan en ausencias; sin cobro el turno no queda pagado", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 20000 });
+      const id = await crearTurno(db, { paciente_id: ana, ...base });
+      await actualizarTurno(db, id, { paciente_id: ana, ...base, estado: "ausente", cargo: 20000, pagado: true });
+      expect((await listarTurnosDePaciente(db, ana))[0]).toMatchObject({ aviso: "sin_aviso", cargo: 20000, pagado: 1 });
+
+      await actualizarTurno(db, id, { paciente_id: ana, ...base, estado: "cancelado", aviso: "con_aviso", cargo: 5, pagado: true });
+      expect((await listarTurnosDePaciente(db, ana))[0]).toMatchObject({ estado: "cancelado", aviso: null, cargo: null, pagado: 0 });
+
+      await expect(
+        actualizarTurno(db, id, { paciente_id: ana, ...base, estado: "ausente", cargo: -1 }),
+      ).rejects.toThrow(/no es válido/);
+    });
+
+    it("el resumen del mes suma lo que se cobra por ausencias y cuenta ausencias y cancelaciones", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 20000 });
+      const ids = [];
+      for (const dia of ["03", "10", "17", "24"]) ids.push(await crearTurno(db, { paciente_id: ana, ...base, inicio: `2026-11-${dia}T10:00` }));
+      await actualizarTurno(db, ids[0], { paciente_id: ana, ...base, estado: "realizado", pagado: true });
+      await actualizarTurno(db, ids[1], { paciente_id: ana, ...base, inicio: "2026-11-10T10:00", estado: "ausente", aviso: "sin_aviso", cargo: 20000 });
+      await actualizarTurno(db, ids[2], { paciente_id: ana, ...base, inicio: "2026-11-17T10:00", estado: "ausente", aviso: "con_aviso" });
+      await actualizarTurno(db, ids[3], { paciente_id: ana, ...base, inicio: "2026-11-24T10:00", estado: "cancelado" });
+
+      expect(await resumenMes(db, "2026-11")).toMatchObject({
+        facturado: 40000,
+        cobrado: 20000,
+        sesiones_realizadas: 1,
+        ausencias: 2,
+        ausencias_sin_aviso: 1,
+        cargos_ausencias: 20000,
+        cancelados: 1,
+        programado: 0,
+      });
+    });
+
+    it("una ausencia avisada libera el horario para la serie; una sin aviso, no", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+      const beto = await crearPaciente(db, { nombre: "Beto", monto_sesion: 100 });
+      const t = await crearTurno(db, { paciente_id: ana, ...base });
+      await actualizarTurno(db, t, { paciente_id: ana, ...base, estado: "ausente", aviso: "con_aviso" });
+      const serie = { paciente_id: beto, desde: "2026-11-03", hora: "10:00", duracion_min: 50, frecuencia_semanas: 1, hasta: "2026-11-03" };
+      expect((await previsualizarSerie(db, serie, "2026-11-01")).superpuestas).toEqual([]);
+      await actualizarTurno(db, t, { paciente_id: ana, ...base, estado: "ausente", aviso: "sin_aviso" });
+      expect((await previsualizarSerie(db, serie, "2026-11-01")).superpuestas).toHaveLength(1);
+    });
+
+    it("una ausencia en un turno de serie se conserva al modificar la serie", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+      const datos = { paciente_id: ana, desde: "2026-11-03", hora: "10:00", duracion_min: 50, frecuencia_semanas: 1, hasta: "2026-11-24" };
+      await crearSerie(db, datos, "2026-11-01");
+      const turnos = (await listarTurnosDePaciente(db, ana)).reverse();
+      const segundo = turnos[1];
+      await actualizarTurno(db, segundo.id, { ...segundo, pagado: false, estado: "ausente", aviso: "con_aviso", cargo: 50 });
+
+      await modificarSerieDesde(db, segundo.serie_id!, "2026-11-03", { ...datos, hora: "11:00" }, "2026-11-01");
+      const despues = (await listarTurnosDePaciente(db, ana)).reverse();
+      expect(despues.map((t) => `${t.inicio} ${t.estado}`)).toEqual([
+        "2026-11-03T11:00 programado",
+        "2026-11-10T10:00 ausente",
+        "2026-11-17T11:00 programado",
+        "2026-11-24T11:00 programado",
+      ]);
+      expect(despues[1]).toMatchObject({ aviso: "con_aviso", cargo: 50 });
+    });
+
+    it("la papelera conserva aviso y cargo", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+      const t = await crearTurno(db, { paciente_id: ana, ...base });
+      await actualizarTurno(db, t, { paciente_id: ana, ...base, estado: "ausente", aviso: "con_aviso", cargo: 50 });
+      await restaurarDePapelera(db, (await eliminarTurno(db, t))!);
+      expect((await listarTurnosDePaciente(db, ana))[0]).toMatchObject({ estado: "ausente", aviso: "con_aviso", cargo: 50 });
+    });
+
+    it("el historial registra el tipo de ausencia y el cobro", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana", monto_sesion: 100 });
+      const t = await crearTurno(db, { paciente_id: ana, ...base });
+      await actualizarTurno(db, t, { paciente_id: ana, ...base, estado: "ausente", aviso: "sin_aviso" });
+      await actualizarTurno(db, t, { paciente_id: ana, ...base, estado: "ausente", aviso: "con_aviso", cargo: 50 });
+      const detalles = (await listarHistorial(db, ana)).map((h) => h.detalle).reverse();
+      expect(detalles[1]).toBe("Turno del 2026-11-03T10:00: programado → ausente sin aviso");
+      // Aviso y cargo cambian en el mismo UPDATE: SQLite no garantiza el orden de esos dos.
+      expect(detalles.slice(2).sort()).toEqual([
+        "Turno del 2026-11-03T10:00: ausente sin aviso → ausente con aviso",
+        "Turno del 2026-11-03T10:00: se cobra la ausencia (50.00)",
+      ]);
+    });
+
+    it("guarda la política de cobro y valida los porcentajes", async () => {
+      expect(await leerPoliticaAusencias(db)).toEqual({ sinAvisoPct: 100, conAvisoPct: 0 });
+      await guardarPoliticaAusencias(db, { sinAvisoPct: 50, conAvisoPct: 25 });
+      expect(await leerPoliticaAusencias(db)).toEqual({ sinAvisoPct: 50, conAvisoPct: 25 });
+      await expect(guardarPoliticaAusencias(db, { sinAvisoPct: 150, conAvisoPct: 0 })).rejects.toThrow(/entre 0 y 100/);
+    });
+
+    it("la migración toma las ausencias anteriores como sin aviso y sin cobro", () => {
+      const sqlite = new DatabaseSync(":memory:");
+      const archivos = readdirSync(CARPETA_MIGRACIONES).sort();
+      for (const a of archivos.filter((a) => a < "0007")) sqlite.exec(readFileSync(new URL(a, CARPETA_MIGRACIONES), "utf8"));
+      sqlite.exec(`INSERT INTO pacientes (nombre, monto_sesion) VALUES ('Ana', 100);
+                   INSERT INTO turnos (paciente_id, inicio, estado, monto) VALUES (1, '2026-10-01T10:00', 'ausente', 100),
+                                                                              (1, '2026-10-08T10:00', 'realizado', 100);`);
+      for (const a of archivos.filter((a) => a >= "0007")) sqlite.exec(readFileSync(new URL(a, CARPETA_MIGRACIONES), "utf8"));
+      expect(sqlite.prepare("SELECT estado, aviso, cargo FROM turnos ORDER BY id").all()).toEqual([
+        { estado: "ausente", aviso: "sin_aviso", cargo: null },
+        { estado: "realizado", aviso: null, cargo: null },
+      ]);
     });
   });
 });

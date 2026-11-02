@@ -1,5 +1,8 @@
 export type EstadoTurno = "programado" | "realizado" | "cancelado" | "ausente";
 
+/** En una ausencia: si el paciente avisó que no venía. */
+export type AvisoAusencia = "con_aviso" | "sin_aviso";
+
 export const ESTADOS_TURNO: { valor: EstadoTurno; etiqueta: string }[] = [
   { valor: "programado", etiqueta: "Programado" },
   { valor: "realizado", etiqueta: "Realizado" },
@@ -19,6 +22,7 @@ export interface Paciente {
 
 export interface PacienteConResumen extends Paciente {
   sesiones_realizadas: number;
+  ausencias: number;
   saldo_pendiente: number;
   ultima_sesion: string | null;
 }
@@ -35,6 +39,10 @@ export interface Turno {
   notas: string | null;
   /** Serie (turno recurrente) a la que pertenece, si hay. */
   serie_id: number | null;
+  /** Solo en ausencias: si el paciente avisó. */
+  aviso: AvisoAusencia | null;
+  /** Solo en ausencias: lo que se cobra por la sesión perdida (pesos). null = no se cobra. */
+  cargo: number | null;
 }
 
 export interface TurnoConPaciente extends Turno {
@@ -52,11 +60,17 @@ export interface Gasto {
 
 /** Números del mes que salen de la agenda y los gastos. */
 export interface ResumenMes {
-  /** Suma de sesiones realizadas (lo ganado, cobrado o no). */
+  /** Suma de sesiones realizadas y ausencias cobradas (lo ganado, cobrado o no). */
   facturado: number;
   /** Parte de lo facturado que ya se cobró. */
   cobrado: number;
   sesiones_realizadas: number;
+  /** Ausencias del mes (con y sin aviso). */
+  ausencias: number;
+  ausencias_sin_aviso: number;
+  /** Lo que se cobra por ausencias (ya incluido en facturado). */
+  cargos_ausencias: number;
+  cancelados: number;
   /** Suma de turnos programados que todavía no ocurrieron o no se marcaron. */
   programado: number;
   sesiones_programadas: number;

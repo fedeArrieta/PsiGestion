@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ComponentType } from "re
 import {
   AlertTriangle,
   CalendarDays,
+  CalendarX2,
   ChartColumn,
   DatabaseBackup,
   House,
@@ -40,6 +41,7 @@ import NotasClinicas from "./notas/NotasClinicas";
 import Acceso from "./seguridad/Acceso";
 import Papelera, { BarraDeshacer } from "./papelera/Papelera";
 import Seguridad, { leerMinutosBloqueo } from "./seguridad/Seguridad";
+import PoliticaAusencias from "./ausencias/PoliticaAusencias";
 import { bloquear, debeBloquear, estadoAcceso, MINUTOS_BLOQUEO_POR_DEFECTO, type EstadoAcceso } from "./seguridad/servicio";
 import VersionYNovedades, { AvisoActualizacion } from "./actualizacion/Actualizacion";
 import { buscarActualizacion, leerVersionVista, marcarNovedadesVistas, versionInstalada } from "./actualizacion/servicio";
@@ -48,7 +50,7 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import "./App.css";
 import { textoError } from "./errores";
 
-type Seccion = "inicio" | "agenda" | "pacientes" | "notas" | "finanzas" | "copias" | "papelera" | "seguridad" | "version";
+type Seccion = "inicio" | "agenda" | "pacientes" | "notas" | "finanzas" | "copias" | "papelera" | "seguridad" | "ausencias" | "version";
 
 type Icono = ComponentType<LucideProps>;
 
@@ -61,6 +63,7 @@ const SECCIONES: { id: Seccion; titulo: string; icono: Icono }[] = [
 ];
 
 const SECCIONES_CONFIGURACION: { id: Seccion; titulo: string; icono: Icono }[] = [
+  { id: "ausencias", titulo: "Ausencias", icono: CalendarX2 },
   { id: "copias", titulo: "Copias de seguridad", icono: DatabaseBackup },
   { id: "papelera", titulo: "Papelera e historial", icono: Trash2 },
   { id: "seguridad", titulo: "Seguridad", icono: ShieldCheck },
@@ -339,6 +342,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         {seccion === "copias" && <Copias onCambio={revisarCopias} />}
         {seccion === "papelera" && <Papelera />}
         {seccion === "seguridad" && <Seguridad onMinutos={setMinutosBloqueo} />}
+        {seccion === "ausencias" && <PoliticaAusencias />}
         {seccion === "version" && <VersionYNovedades version={version} onActualizacion={setActualizacion} />}
         <BarraDeshacer />
       </main>

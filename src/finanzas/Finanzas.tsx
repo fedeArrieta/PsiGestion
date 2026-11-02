@@ -76,7 +76,9 @@ export default function Finanzas() {
             <Tarjeta
               titulo="Ganado"
               valor={pesos(resumen.facturado)}
-              detalle={`${resumen.sesiones_realizadas} sesiones realizadas`}
+              detalle={`${resumen.sesiones_realizadas} sesiones realizadas${
+                resumen.cargos_ausencias > 0 ? ` + ${pesos(resumen.cargos_ausencias)} por ausencias` : ""
+              }`}
             />
             <Tarjeta
               titulo="Cobrado"
@@ -100,6 +102,19 @@ export default function Finanzas() {
               tono={neto < 0 ? "negativo" : neto > 0 ? "positivo" : undefined}
             />
           </div>
+
+          {(resumen.ausencias > 0 || resumen.cancelados > 0) && (
+            <p className="nota">
+              {resumen.ausencias > 0 &&
+                `${resumen.ausencias === 1 ? "1 ausencia" : `${resumen.ausencias} ausencias`} en el mes (${
+                  resumen.ausencias_sin_aviso
+                } sin aviso)${
+                  resumen.cargos_ausencias > 0 ? `, se cobran ${pesos(resumen.cargos_ausencias)}` : ", ninguna se cobra"
+                }. `}
+              {resumen.cancelados > 0 &&
+                `${resumen.cancelados === 1 ? "1 turno cancelado" : `${resumen.cancelados} turnos cancelados`}.`}
+            </p>
+          )}
 
           <div className="columnas-finanzas">
             <section className="panel">

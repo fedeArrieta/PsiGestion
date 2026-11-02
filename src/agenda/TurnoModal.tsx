@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { NotebookPen, Repeat } from "lucide-react";
-import type { EstadoTurno, Paciente, Serie, TurnoConPaciente } from "../tipos";
-import { ESTADOS_TURNO } from "../tipos";
+import type { AvisoAusencia, EstadoTurno, Paciente, Serie, TurnoConPaciente } from "../tipos";
 import { turnosSuperpuestos } from "./logica";
 import { desdeIsoLocal, horaTexto } from "../fechas";
-import { leerMonto, pesos } from "../formato";
+import { leerMonto, montoEditable, pesos } from "../formato";
+import {
+  cargoSugerido,
+  desdeOpcion,
+  liberaHorario,
+  OPCIONES_ESTADO,
+  opcionDe,
+  type OpcionEstado,
+  type PoliticaAusencias,
+} from "../ausencias/logica";
 import { textoError } from "../errores";
 import type { DatosSerie, VistaPreviaSerie } from "../repositorio";
 import { FRECUENCIAS, textoSerie } from "./series";
@@ -25,6 +33,10 @@ export interface ResultadoModal {
   inicio: string;
   duracion_min: number;
   estado: EstadoTurno;
+  /** Solo en ausencias. */
+  aviso: AvisoAusencia | null;
+  /** Solo en ausencias: lo que se cobra (pesos); null = no se cobra. */
+  cargo: number | null;
   notas: string;
   pagado: boolean;
   repeticion: Repeticion | null;
@@ -38,6 +50,8 @@ interface Props {
   /** Devuelve los turnos de una fecha (AAAA-MM-DD) para avisar superposiciones. */
   turnosDeFecha: (fecha: string) => Promise<TurnoConPaciente[]>;
   duracionPredeterminada: number;
+  /** Cuánto se propone cobrar cuando el paciente falta. */
+  politica: PoliticaAusencias;
   /** Serie del turno, si es parte de una. */
   cargarSerie: (id: number) => Promise<Serie | null>;
   /** Qué turnos generaría una serie (para mostrar el resumen antes de guardar). */
@@ -71,7 +85,11 @@ export default function TurnoModal(props: Props) {
   const [fecha, setFecha] = useState(inicio.slice(0, 10));
   const [hora, setHora] = useState(inicio.slice(11, 16));
   const [duracion, setDuracion] = useState(String(turno?.duracion_min ?? props.duracionPredeterminada));
-  const [estado, setEstado] = useState<EstadoTurno>(turno?.estado ?? "programado");
+  const [opcion, setOpcion] = useState<OpcionEstado>(turno ? opcionDe(turno) : "programado");
+  const { estado, aviso } = desdeOpcion(opcion);
+  // Ausencias: si se cobra y cuánto. Al marcar una ausencia se propone lo de la política.
+  const [cobrar, setCobrar] = useState(turno?.estado === "ausente" && turno.cargo != null);
+  const [cargoTexto, setCargoTexto] = useState(turno?.cargo != null ? montoEditable(turno.cargo) : "");
   const [notas, setNotas] = useState(turno?.notas ?? "");
   const [pagado, setPagado] = useState(Boolean(turno?.pagado));
   const [error, setError] = useState<string | null>(null);
@@ -153,9 +171,24 @@ export default function TurnoModal(props: Props) {
 
   const superpuestos = useMemo(() => {
     const dur = Number(duracion);
-    if (!fecha || !hora || !(dur > 0) || estado === "cancelado" || repite) return [];
+    if (!fecha || !hora || !(dur > 0) || liberaHorario({ estado, aviso }) || repite) return [];
     return turnosSuperpuestos({ id: turno?.id, inicio: `${fecha}T${hora}`, duracion_min: dur }, delDia);
-  }, [fecha, hora, duracion, estado, turno?.id, delDia, repite]);
+  }, [fecha, hora, duracion, estado, aviso, turno?.id, delDia, repite]);
+
+  const montoSesion = turno?.monto ?? 0;
+  function cambiarOpcion(o: OpcionEstado) {
+    const nuevo = desdeOpcion(o);
+    if (nuevo.aviso && nuevo.aviso !== aviso) {
+      // Se aplica la política del tipo de ausencia elegido.
+      const sugerido = cargoSugerido(montoSesion, nuevo.aviso, props.politica);
+      setCobrar(sugerido !== null);
+      setCargoTexto(sugerido !== null ? montoEditable(sugerido) : montoEditable(montoSesion));
+    }
+    setOpcion(o);
+  }
+  const pctPolitica = aviso === "con_aviso" ? props.politica.conAvisoPct : props.politica.sinAvisoPct;
+  const cobraAusencia = estado === "ausente" && cobrar;
+  const importe = estado === "realizado" ? montoSesion : cobraAusencia ? leerMonto(cargoTexto) : 0;
 
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
@@ -168,6 +201,8 @@ export default function TurnoModal(props: Props) {
     if (repeticion && termina === "fecha" && !hastaFecha) return setError("Elegí hasta qué fecha se repite.");
     if (repeticion?.hasta && repeticion.hasta < fecha)
       return setError("La fecha de fin tiene que ser posterior a la del turno.");
+    const cargo = cobraAusencia ? leerMonto(cargoTexto) : null;
+    if (cargo !== null && !(cargo > 0)) return setError("Escribí cuánto se cobra por la ausencia, o destildá Cobrar.");
     setGuardando(true);
     try {
       await props.onGuardar({
@@ -176,8 +211,10 @@ export default function TurnoModal(props: Props) {
         inicio: `${fecha}T${hora}`,
         duracion_min: Number(duracion),
         estado,
+        aviso,
+        cargo,
         notas,
-        pagado,
+        pagado: (estado === "realizado" || cobraAusencia) && pagado,
         repeticion,
         alcance: editaSerie ? "serie" : "turno",
       });
@@ -358,18 +395,51 @@ export default function TurnoModal(props: Props) {
           <div className="fila">
             <label className="crece">
               Estado
-              <select value={estado} onChange={(e) => setEstado(e.target.value as EstadoTurno)}>
-                {ESTADOS_TURNO.map((e) => (
+              <select value={opcion} onChange={(e) => cambiarOpcion(e.target.value as OpcionEstado)}>
+                {OPCIONES_ESTADO.map((e) => (
                   <option key={e.valor} value={e.valor}>
                     {e.etiqueta}
                   </option>
                 ))}
               </select>
             </label>
-            <label className="check">
-              <input type="checkbox" checked={pagado} onChange={(e) => setPagado(e.target.checked)} />
-              Pagado{turno.monto ? ` (${pesos(turno.monto)})` : ""}
-            </label>
+            {(estado === "realizado" || cobraAusencia) && (
+              <label className="check">
+                <input type="checkbox" checked={pagado} onChange={(e) => setPagado(e.target.checked)} />
+                Pagado{importe > 0 ? ` (${pesos(importe)})` : ""}
+              </label>
+            )}
+          </div>
+        )}
+
+        {turno && !editaSerie && estado === "ausente" && (
+          <div className="ausencia-info">
+            <div className="fila">
+              <label className="check">
+                <input type="checkbox" checked={cobrar} onChange={(e) => setCobrar(e.target.checked)} />
+                Cobrar la sesión
+              </label>
+              {cobrar && (
+                <label className="ancho">
+                  Monto a cobrar
+                  <input
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={cargoTexto}
+                    onChange={(e) => setCargoTexto(e.target.value)}
+                  />
+                </label>
+              )}
+            </div>
+            <p className="nota">
+              {cobrar
+                ? "Se suma al saldo del paciente y a los ingresos del mes."
+                : "No se cobra: no cambia el saldo del paciente."}{" "}
+              Tu política para ausencias {aviso === "con_aviso" ? "con" : "sin"} aviso:{" "}
+              {pctPolitica > 0 ? `cobrar el ${pctPolitica}% de la sesión` : "no cobrar"}.
+              {aviso === "con_aviso" && " El horario queda libre para otro turno."}
+              {serie && " La serie sigue igual: solo cambia este turno."}
+            </p>
           </div>
         )}
 

@@ -155,7 +155,7 @@ Con cualquiera de las dos, el flujo **Publicar versión** solo necesita los secr
 
 ### 10. Precisión de los montos (Media)
 
-**Hecho (paso 5).** Los montos (tarifas, turnos, gastos y objetivo mensual) se guardan como centavos enteros. La migración 0004 convierte los datos existentes al abrir la versión nueva. La app sigue mostrando y pidiendo pesos: la conversión se hace en un solo lugar (`src/repositorio.ts`), así que las sumas se hacen sobre enteros y no acumulan errores de redondeo.
+**Hecho (paso 5).** Los montos (tarifas, turnos, gastos y objetivo mensual) se guardan como centavos enteros. La migración 0004 convierte los datos existentes al abrir la versión nueva. La app sigue mostrando y pidiendo pesos: la conversión se hace en un solo lugar (`src/repositorio.ts`), así que las sumas se hacen sobre enteros y no acumulan errores de redondeo. Lo que se cobra por una ausencia (versión 0.6.0) también se guarda en centavos (`turnos.cargo`).
 
 - Pruebas: sumar 0,1 + 0,2 y mil montos de 0,01 da exactamente el total esperado, y la migración convierte bien una base con datos anteriores.
 
@@ -165,7 +165,7 @@ Con cualquiera de las dos, el flujo **Publicar versión** solo necesita los secr
 
 - Al eliminar un turno o un gasto aparece una barra con "Deshacer" durante unos segundos.
 - Lo eliminado va a la sección "Papelera e historial", donde se puede restaurar o borrar definitivamente. Se vacía sola a los 30 días.
-- Historial de cambios de los turnos: creación, cambio de estado, pago, cambio de monto, reprogramación y eliminación, con fecha y hora. Se registra automáticamente en la base (triggers de SQLite), sin depender de la pantalla.
+- Historial de cambios de los turnos: creación, cambio de estado, pago, cambio de monto, reprogramación y eliminación, con fecha y hora. Se registra automáticamente en la base (triggers de SQLite), sin depender de la pantalla. Desde la versión 0.6.0 también registra si la ausencia fue con o sin aviso y si se cobra; la papelera conserva esos datos al restaurar.
 - Conservación de pacientes dados de baja: la app no borra pacientes ni su historia automáticamente. La Ley 26.529 exige conservar la historia clínica al menos 10 años, así que los pacientes inactivos quedan guardados (y en las copias de seguridad) hasta que la profesional decida otra cosa.
 
 ### 12. Rendimiento (Media)

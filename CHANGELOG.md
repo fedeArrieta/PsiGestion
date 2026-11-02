@@ -2,6 +2,22 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.6.0] - 2026-11-02
+
+### Nuevo
+
+- Ausencias con y sin aviso: en el turno, el estado ahora distingue "Ausente con aviso" (el paciente avisó que no venía) de "Ausente sin aviso". "Cancelado" queda para los turnos que cancelás vos, y no se cobran.
+- Cobro opcional de las ausencias: al marcar una ausencia se puede elegir "Cobrar la sesión" y cuánto. Lo que se cobra se suma al saldo del paciente, a "Marcar todo pagado" y a lo ganado del mes en Inicio y Finanzas.
+- Política de cobro (Configuración → Ausencias): cuánto proponer cobrar en cada tipo de ausencia (nada, 25 %, 50 %, 75 % o la sesión completa). Por defecto: sin aviso se cobra completa y con aviso no se cobra. Es solo la sugerencia: en cada turno se puede cambiar.
+- Una ausencia avisada deja libre el horario: no cuenta como superposición al agendar otro turno o una serie en ese horario. En la agenda se ve con borde punteado.
+- En los turnos recurrentes, marcar una ausencia cambia solo ese turno: la serie sigue igual y la ausencia se conserva si después se modifica la serie.
+- El diario clínico del paciente muestra las ausencias en la línea de tiempo, junto a las notas.
+- Finanzas muestra cuántas ausencias y cancelaciones hubo en el mes y cuánto se cobra por ausencias. La ficha impresa, el historial de cambios y la exportación a Excel también incluyen el tipo de ausencia y el cobro.
+
+### Cambios
+
+- Las ausencias cargadas antes de esta versión quedan como "Ausente sin aviso" y sin cobrar, así no cambia ningún saldo.
+
 ## [0.5.0] - 2026-11-02
 
 ### Nuevo
