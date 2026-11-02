@@ -48,6 +48,7 @@ pub fn run() {
             seguridad::importar_llave,
             registro::abrir_carpeta_registros,
             exportar::exportar_excel,
+            exportar::guardar_pdf,
             recibos::carpeta_recibos_sugerida,
             recibos::guardar_recibo,
             recibos::abrir_recibo,

@@ -2,7 +2,7 @@ import type { DatosExportacion } from "../repositorio";
 import { fechaCorta, numeroRecibo } from "../recibos/logica";
 import { etiquetaEstado } from "../ausencias/logica";
 
-export type TipoColumna = "texto" | "numero" | "pesos";
+export type TipoColumna = "texto" | "numero" | "pesos" | "porcentaje";
 
 export interface HojaExcel {
   nombre: string;
