@@ -10,6 +10,9 @@ import type {
   Serie,
   Turno,
   TurnoConPaciente,
+  Emisor,
+  ItemRecibo,
+  Recibo,
   SeccionNota,
   VersionNota,
 } from "./tipos";
@@ -22,6 +25,7 @@ import {
   type PlantillaRecordatorio,
   type TurnoParaRecordatorio,
 } from "./recordatorios/logica";
+import { CLAVE_PROXIMO_NUMERO, itemsDeTurnos, leerConcepto, leerEmisor, faltaParaEmitir } from "./recibos/logica";
 import { fechasDeSerie, horizonte, periodoDe, repartirFechas, sumarDiasFecha } from "./agenda/series";
 
 /** Lo mínimo que se usa de la base. En la app es tauri-plugin-sql; en los tests, SQLite de Node. */
@@ -43,6 +47,8 @@ export interface DatosPaciente {
   email?: string | null;
   monto_sesion?: number;
   notas?: string | null;
+  /** DNI o CUIT, para los recibos. */
+  documento?: string | null;
 }
 
 export interface DatosTurno {
@@ -103,8 +109,8 @@ function validarPaciente(datos: DatosPaciente): { nombre: string; monto: number 
 export async function crearPaciente(db: Db, datos: DatosPaciente): Promise<number> {
   const { nombre, monto } = validarPaciente(datos);
   const r = await db.execute(
-    "INSERT INTO pacientes (nombre, telefono, email, monto_sesion, notas) VALUES ($1, $2, $3, $4, $5)",
-    [nombre, vacioANull(datos.telefono), vacioANull(datos.email), monto, vacioANull(datos.notas)],
+    "INSERT INTO pacientes (nombre, telefono, email, monto_sesion, notas, documento) VALUES ($1, $2, $3, $4, $5, $6)",
+    [nombre, vacioANull(datos.telefono), vacioANull(datos.email), monto, vacioANull(datos.notas), vacioANull(datos.documento)],
   );
   if (r.lastInsertId == null) throw new Error("No se pudo crear el paciente.");
   return r.lastInsertId;
@@ -215,8 +221,8 @@ export async function actualizarPaciente(db: Db, id: number, datos: DatosPacient
   const { nombre, monto } = validarPaciente(datos);
   await db.transaccion([
     {
-      sql: "UPDATE pacientes SET nombre = $1, telefono = $2, email = $3, monto_sesion = $4, notas = $5 WHERE id = $6",
-      params: [nombre, vacioANull(datos.telefono), vacioANull(datos.email), monto, vacioANull(datos.notas), id],
+      sql: "UPDATE pacientes SET nombre = $1, telefono = $2, email = $3, monto_sesion = $4, notas = $5, documento = $6 WHERE id = $7",
+      params: [nombre, vacioANull(datos.telefono), vacioANull(datos.email), monto, vacioANull(datos.notas), vacioANull(datos.documento), id],
     },
     {
       sql: "UPDATE turnos SET monto = $1 WHERE paciente_id = $2 AND estado = 'programado' AND inicio >= $3",
@@ -788,12 +794,13 @@ export interface DatosExportacion {
   pacientes: Paciente[];
   turnos: TurnoConPaciente[];
   gastos: Gasto[];
+  recibos: Recibo[];
 }
 
 /** Todo lo que se exporta. Con mes (AAAA-MM) se limitan turnos y gastos a ese mes. */
 export async function datosParaExportar(db: Db, mes: string | null): Promise<DatosExportacion> {
   if (mes !== null && !MES.test(mes)) throw new Error("El mes no es válido.");
-  const [pacientes, turnos, gastos] = await Promise.all([
+  const [pacientes, turnos, gastos, recibos] = await Promise.all([
     db.select<Paciente[]>("SELECT * FROM pacientes ORDER BY nombre COLLATE NOCASE"),
     db.select<TurnoConPaciente[]>(
       `SELECT t.*, p.nombre AS paciente_nombre
@@ -803,11 +810,13 @@ export async function datosParaExportar(db: Db, mes: string | null): Promise<Dat
       [mes],
     ),
     db.select<Gasto[]>("SELECT * FROM gastos WHERE $1 IS NULL OR mes = $1 ORDER BY mes, id", [mes]),
+    db.select<FilaRecibo[]>("SELECT * FROM recibos WHERE $1 IS NULL OR substr(fecha, 1, 7) = $1 ORDER BY numero", [mes]),
   ]);
   return {
     pacientes: enPesos(pacientes, ["monto_sesion"]),
     turnos: enPesos(turnos, ["monto", "cargo"]),
     gastos: enPesos(gastos, ["monto"]),
+    recibos: recibos.map(aRecibo),
   };
 }
 
@@ -1061,4 +1070,137 @@ export async function listarVersionesNota(db: Db, notaId: number): Promise<Versi
     [notaId],
   );
   return filas.map((f) => ({ ...f, secciones: leerSecciones(f.secciones) }));
+}
+
+// ---------- Recibos de pago ----------
+// Un recibo emitido no se borra ni se modifica (lo impiden triggers de la migración 0009):
+// solo se anula. Un turno pagado puede estar en un solo recibo vigente.
+
+interface FilaRecibo extends Omit<Recibo, "items" | "emisor"> {
+  items: string;
+  emisor: string;
+}
+
+function aRecibo(f: FilaRecibo): Recibo {
+  const items = (JSON.parse(f.items) as ItemRecibo[]).map((it) => ({ ...it, importe: it.importe / 100 }));
+  return { ...f, total: f.total / 100, items, emisor: JSON.parse(f.emisor) as Emisor };
+}
+
+/** Turnos (sobre "t") que ya están en un recibo vigente. */
+const EN_RECIBO_VIGENTE = `EXISTS (SELECT 1 FROM recibo_turnos rt JOIN recibos r ON r.id = rt.recibo_id
+                                    WHERE rt.turno_id = t.id AND r.anulado_en IS NULL)`;
+
+/** Pagos del paciente que todavía no tienen recibo: turnos pagados que generan un cobro. */
+export async function turnosSinRecibo(db: Db, pacienteId: number): Promise<Turno[]> {
+  const filas = await db.select<Turno[]>(
+    `SELECT t.* FROM turnos t
+      WHERE t.paciente_id = $1 AND t.pagado = 1 AND ${IMPORTE} > 0 AND NOT ${EN_RECIBO_VIGENTE}
+      ORDER BY t.inicio DESC, t.id DESC`,
+    [pacienteId],
+  );
+  return enPesos(filas, ["monto", "cargo"]);
+}
+
+/** Número de recibo vigente de cada turno del paciente (para mostrarlo en la ficha). */
+export async function recibosDeTurnos(db: Db, pacienteId: number): Promise<Map<number, number>> {
+  const filas = await db.select<{ turno_id: number; numero: number }[]>(
+    `SELECT rt.turno_id, r.numero FROM recibo_turnos rt JOIN recibos r ON r.id = rt.recibo_id
+      WHERE r.paciente_id = $1 AND r.anulado_en IS NULL`,
+    [pacienteId],
+  );
+  return new Map(filas.map((f) => [f.turno_id, f.numero]));
+}
+
+/** Próximo número de recibo: el siguiente al último, o el inicial configurado si es mayor. */
+export async function proximoNumeroRecibo(db: Db): Promise<number> {
+  const [f] = await db.select<{ n: number }[]>(
+    `SELECT MAX(COALESCE((SELECT MAX(numero) FROM recibos), 0) + 1,
+                COALESCE((SELECT CAST(valor AS INTEGER) FROM configuracion WHERE clave = $1), 1)) AS n`,
+    [CLAVE_PROXIMO_NUMERO],
+  );
+  return Number(f.n);
+}
+
+export interface DatosRecibo {
+  paciente_id: number;
+  turno_ids: number[];
+  /** AAAA-MM-DD */
+  fecha: string;
+  medio_pago?: string | null;
+}
+
+/** Emite un recibo por los turnos pagados elegidos. Devuelve el recibo guardado. */
+export async function emitirRecibo(db: Db, d: DatosRecibo): Promise<Recibo> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.fecha)) throw new Error("La fecha del recibo no es válida.");
+  const ids = [...new Set(d.turno_ids)];
+  if (!ids.length) throw new Error("Elegí al menos un pago para el recibo.");
+  const config = await leerConfiguracion(db);
+  const emisor = leerEmisor(config);
+  const falta = faltaParaEmitir(emisor);
+  if (falta) throw new Error(falta);
+  const [paciente] = await db.select<Paciente[]>("SELECT * FROM pacientes WHERE id = $1", [d.paciente_id]);
+  if (!paciente) throw new Error("No se encontró el paciente.");
+  const disponibles = new Map((await turnosSinRecibo(db, d.paciente_id)).map((t) => [t.id, t]));
+  const turnos = ids.map((id) => disponibles.get(id));
+  if (turnos.some((t) => !t)) {
+    throw new Error("Alguno de los pagos elegidos ya tiene recibo, no está pagado o no es de este paciente.");
+  }
+  const items = itemsDeTurnos(turnos as Turno[], leerConcepto(config)).map((it) => ({ ...it, importe: aCentavos(it.importe) }));
+  const total = items.reduce((acc, it) => acc + it.importe, 0);
+  const numero = await proximoNumeroRecibo(db);
+  await db.transaccion([
+    {
+      sql: `INSERT INTO recibos (numero, fecha, paciente_id, paciente_nombre, paciente_documento, total, medio_pago, items, emisor)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      params: [
+        numero,
+        d.fecha,
+        paciente.id,
+        paciente.nombre,
+        paciente.documento ?? null,
+        total,
+        vacioANull(d.medio_pago),
+        JSON.stringify(items),
+        JSON.stringify(emisor),
+      ],
+    },
+    {
+      sql: `INSERT INTO recibo_turnos (recibo_id, turno_id)
+            SELECT (SELECT id FROM recibos WHERE numero = $1), value FROM json_each($2)`,
+      params: [numero, JSON.stringify(ids)],
+    },
+  ]);
+  const recibo = await obtenerRecibo(db, numero, "numero");
+  if (!recibo) throw new Error("No se pudo guardar el recibo.");
+  return recibo;
+}
+
+export async function obtenerRecibo(db: Db, valor: number, por: "id" | "numero" = "id"): Promise<Recibo | null> {
+  const [f] = await db.select<FilaRecibo[]>(`SELECT * FROM recibos WHERE ${por === "id" ? "id" : "numero"} = $1`, [valor]);
+  return f ? aRecibo(f) : null;
+}
+
+/** Recibos de un paciente (o de todos), del más nuevo al más viejo. */
+export async function listarRecibos(db: Db, pacienteId: number | null = null, limite = 500): Promise<Recibo[]> {
+  const filas = await db.select<FilaRecibo[]>(
+    `SELECT * FROM recibos WHERE $1 IS NULL OR paciente_id = $1 ORDER BY numero DESC LIMIT $2`,
+    [pacienteId, limite],
+  );
+  return filas.map(aRecibo);
+}
+
+/** Anula un recibo: queda guardado (con la marca ANULADO) y sus pagos pueden ir en otro recibo. */
+export async function anularRecibo(db: Db, id: number, motivo: string | null, ahora: string): Promise<void> {
+  const r = await db.execute("UPDATE recibos SET anulado_en = $1, motivo_anulacion = $2 WHERE id = $3 AND anulado_en IS NULL", [
+    ahora.replace("T", " "),
+    vacioANull(motivo),
+    id,
+  ]);
+  if (!r.rowsAffected) throw new Error("El recibo no existe o ya estaba anulado.");
+}
+
+/** Medio de pago del último recibo, para proponerlo en el siguiente. */
+export async function ultimoMedioPago(db: Db): Promise<string | null> {
+  const [f] = await db.select<{ medio_pago: string | null }[]>("SELECT medio_pago FROM recibos ORDER BY id DESC LIMIT 1");
+  return f?.medio_pago ?? null;
 }

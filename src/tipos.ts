@@ -18,6 +18,8 @@ export interface Paciente {
   monto_sesion: number;
   notas: string | null;
   activo: number;
+  /** DNI o CUIT, para los recibos. */
+  documento: string | null;
 }
 
 export interface PacienteConResumen extends Paciente {
@@ -135,4 +137,47 @@ export interface VersionNota {
   plantilla: string;
   secciones: SeccionNota[];
   guardada_en: string;
+}
+
+/** Datos del profesional que se imprimen en el recibo. */
+export interface Emisor {
+  nombre: string;
+  /** Ej.: "Licenciada en Psicología". */
+  titulo: string;
+  matricula: string;
+  cuit: string;
+  domicilio: string;
+  telefono: string;
+  email: string;
+  /** Texto al pie (por defecto, "Documento no válido como factura."). */
+  leyenda: string;
+}
+
+/** Un renglón del recibo: lo que se cobró por un turno. */
+export interface ItemRecibo {
+  turno_id: number | null;
+  /** AAAA-MM-DD */
+  fecha: string;
+  concepto: string;
+  /** Pesos */
+  importe: number;
+}
+
+/** Recibo de pago emitido (comprobante simple, no es factura). */
+export interface Recibo {
+  id: number;
+  numero: number;
+  /** AAAA-MM-DD */
+  fecha: string;
+  paciente_id: number;
+  paciente_nombre: string;
+  paciente_documento: string | null;
+  /** Pesos */
+  total: number;
+  medio_pago: string | null;
+  items: ItemRecibo[];
+  emisor: Emisor;
+  anulado_en: string | null;
+  motivo_anulacion: string | null;
+  creado_en: string;
 }

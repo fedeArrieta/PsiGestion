@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { NotebookPen } from "lucide-react";
+import { NotebookPen, ReceiptText, X } from "lucide-react";
 import { obtenerDb } from "../db";
 import {
   actualizarPaciente,
@@ -10,6 +10,10 @@ import {
   saldarPaciente,
   listarNotas,
   turnosConNota,
+  recibosDeTurnos,
+  turnosSinRecibo,
+  listarRecibos,
+  obtenerRecibo,
 } from "../repositorio";
 import type { PacienteConResumen, Turno } from "../tipos";
 import { etiquetaEstado, importeTurno, seCobra } from "../ausencias/logica";
@@ -19,6 +23,10 @@ import ImpresionFicha from "./ImpresionFicha";
 import { textoError } from "../errores";
 import NotaModal, { type InicioNota } from "../notas/NotaModal";
 import DiarioPaciente from "../notas/DiarioPaciente";
+import ReciboModal from "../recibos/ReciboModal";
+import ListaRecibos from "../recibos/ListaRecibos";
+import { numeroRecibo } from "../recibos/logica";
+import { verPdf } from "../recibos/servicio";
 
 interface Props {
   /** null = paciente nuevo */
@@ -29,7 +37,7 @@ interface Props {
   pestanaInicial?: Pestana;
 }
 
-export type Pestana = "sesiones" | "diario";
+export type Pestana = "sesiones" | "diario" | "recibos";
 
 const fmtFecha = new Intl.DateTimeFormat("es-AR", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" });
 const fmtTurno = { format: (d: Date) => `${fmtFecha.format(d)} · ${aIsoLocal(d).slice(11, 16)}` };
@@ -38,6 +46,7 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
   const [nombre, setNombre] = useState(paciente?.nombre ?? "");
   const [telefono, setTelefono] = useState(paciente?.telefono ?? "");
   const [email, setEmail] = useState(paciente?.email ?? "");
+  const [documento, setDocumento] = useState(paciente?.documento ?? "");
   const [monto, setMonto] = useState(montoEditable(paciente?.monto_sesion ?? 0));
   const [notas, setNotas] = useState(paciente?.notas ?? "");
   const [turnos, setTurnos] = useState<Turno[]>([]);
@@ -50,6 +59,14 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
   const [versionDiario, setVersionDiario] = useState(0);
   const [cantidadNotas, setCantidadNotas] = useState<number | null>(null);
   const terminarImpresion = useCallback(() => setImprimiendo(false), []);
+  // Recibos: número de recibo vigente por turno, pagos sin recibo y el modal para emitir.
+  const [conRecibo, setConRecibo] = useState<Map<number, number>>(new Map());
+  const [pagosSinRecibo, setPagosSinRecibo] = useState(0);
+  const [cantidadRecibos, setCantidadRecibos] = useState<number | null>(null);
+  const [versionRecibos, setVersionRecibos] = useState(0);
+  const [recibo, setRecibo] = useState<{ preseleccion?: number[] } | null>(null);
+  /** Pago recién registrado, para ofrecer el recibo. */
+  const [ultimoPago, setUltimoPago] = useState<{ ids: number[]; total: number } | null>(null);
 
   useEffect(() => {
     const alPresionar = (e: KeyboardEvent) => e.key === "Escape" && onCerrar();
@@ -60,14 +77,26 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
   const cargarTurnos = useCallback(async () => {
     if (!paciente) return;
     const db = await obtenerDb();
-    const [t, n, notas] = await Promise.all([
+    const [t, n, notas, r, sinRecibo, recibos] = await Promise.all([
       listarTurnosDePaciente(db, paciente.id),
       turnosConNota(db, paciente.id),
       listarNotas(db, { pacienteId: paciente.id }),
+      recibosDeTurnos(db, paciente.id),
+      turnosSinRecibo(db, paciente.id),
+      listarRecibos(db, paciente.id),
     ]);
     setTurnos(t);
     setConNota(n);
     setCantidadNotas(notas.length);
+    setConRecibo(r);
+    setPagosSinRecibo(sinRecibo.length);
+    setCantidadRecibos(recibos.length);
+    // Si el pago recién registrado ya no está pendiente de recibo, deja de ofrecerse.
+    setUltimoPago((u) => {
+      if (!u) return u;
+      const ids = u.ids.filter((id) => sinRecibo.some((x) => x.id === id));
+      return ids.length ? { ids, total: sinRecibo.filter((x) => ids.includes(x.id)).reduce((a, x) => a + importeTurno(x), 0) } : null;
+    });
   }, [paciente]);
 
   useEffect(() => {
@@ -92,7 +121,7 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
     if (Number.isNaN(montoNumero)) return setError("El monto por sesión no es válido. Ejemplo: 25000 o 25.000");
     return ejecutar(async () => {
       const db = await obtenerDb();
-      const datos = { nombre, telefono, email, notas, monto_sesion: montoNumero };
+      const datos = { nombre, telefono, email, documento, notas, monto_sesion: montoNumero };
       if (paciente) await actualizarPaciente(db, paciente.id, datos, aIsoLocal(new Date()));
       else await crearPaciente(db, datos);
       await onCambio();
@@ -100,16 +129,37 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
     });
   };
 
-  const alternarPago = (t: Turno) =>
-    ejecutar(async () => {
+  const alternarPago = (t: Turno) => {
+    const numero = conRecibo.get(t.id);
+    if (
+      t.pagado &&
+      numero != null &&
+      !window.confirm(
+        `Este pago figura en el recibo N° ${numeroRecibo(numero)}. Si lo desmarcás, el recibo sigue vigente: ` +
+          "conviene anularlo en la pestaña Recibos. ¿Desmarcar el pago igual?",
+      )
+    )
+      return;
+    return ejecutar(async () => {
       await marcarPagado(await obtenerDb(), t.id, !t.pagado);
+      setUltimoPago(!t.pagado && seCobra(t) ? { ids: [t.id], total: importeTurno(t) } : null);
       await Promise.all([cargarTurnos(), onCambio()]);
     });
+  };
 
-  const saldar = () =>
-    ejecutar(async () => {
+  const saldar = () => {
+    const pendientes = turnos.filter((t) => !t.pagado && seCobra(t));
+    return ejecutar(async () => {
       await saldarPaciente(await obtenerDb(), paciente!.id);
+      setUltimoPago({ ids: pendientes.map((t) => t.id), total: pendientes.reduce((a, t) => a + importeTurno(t), 0) });
       await Promise.all([cargarTurnos(), onCambio()]);
+    });
+  };
+
+  const verRecibo = (numero: number) =>
+    ejecutar(async () => {
+      const r = await obtenerRecibo(await obtenerDb(), numero, "numero");
+      if (r) await verPdf(r);
     });
 
   const cambiarActivo = () => {
@@ -149,6 +199,10 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
           </div>
+          <label>
+            DNI o CUIT
+            <input value={documento} onChange={(e) => setDocumento(e.target.value)} placeholder="Opcional, para los recibos" />
+          </label>
           <label>
             Monto por sesión
             <input inputMode="decimal" placeholder="0" value={monto} onChange={(e) => setMonto(e.target.value)} />
@@ -202,14 +256,49 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
                 >
                   Diario clínico{cantidadNotas != null && ` (${cantidadNotas})`}
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={pestana === "recibos"}
+                  className={pestana === "recibos" ? "activo" : ""}
+                  onClick={() => setPestana("recibos")}
+                >
+                  Recibos{cantidadRecibos != null && ` (${cantidadRecibos})`}
+                </button>
               </div>
               {pestana === "sesiones" && saldo > 0 && (
                 <button type="button" onClick={saldar} disabled={ocupado}>
                   Marcar todo pagado ({pesos(saldo)})
                 </button>
               )}
+              {pestana === "recibos" && pagosSinRecibo > 0 && (
+                <button type="button" className="primario" onClick={() => setRecibo({})} disabled={ocupado}>
+                  Emitir recibo ({pagosSinRecibo} {pagosSinRecibo === 1 ? "pago" : "pagos"} sin recibo)
+                </button>
+              )}
             </div>
-            {pestana === "diario" ? (
+            {pestana === "sesiones" && ultimoPago && (
+              <div className="aviso-recibo" role="status">
+                <ReceiptText size={18} />
+                <span className="crece">
+                  Pago registrado: {ultimoPago.ids.length === 1 ? "1 sesión" : `${ultimoPago.ids.length} sesiones`} por{" "}
+                  {pesos(ultimoPago.total)}.
+                </span>
+                <button type="button" className="primario" onClick={() => setRecibo({ preseleccion: ultimoPago.ids })}>
+                  Emitir recibo
+                </button>
+                <button type="button" className="boton-icono" aria-label="No emitir recibo" title="Ahora no" onClick={() => setUltimoPago(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+            {pestana === "recibos" ? (
+              <ListaRecibos
+                pacienteId={paciente.id}
+                version={versionRecibos}
+                onCambio={() => void cargarTurnos()}
+              />
+            ) : pestana === "diario" ? (
               <DiarioPaciente
                 pacienteId={paciente.id}
                 version={versionDiario}
@@ -248,6 +337,29 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
                       <input type="checkbox" checked={Boolean(t.pagado)} onChange={() => alternarPago(t)} disabled={ocupado} />
                       Pagado
                     </label>
+                    {conRecibo.has(t.id) ? (
+                      <button
+                        type="button"
+                        className="boton-icono con-recibo"
+                        title={`Recibo N° ${numeroRecibo(conRecibo.get(t.id)!)}: abrir el PDF`}
+                        aria-label="Abrir el recibo"
+                        disabled={ocupado}
+                        onClick={() => verRecibo(conRecibo.get(t.id)!)}
+                      >
+                        <ReceiptText size={15} />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`boton-icono${t.pagado && seCobra(t) ? "" : " oculto"}`}
+                        title="Emitir recibo de este pago"
+                        aria-label="Emitir recibo de este pago"
+                        disabled={ocupado || !(t.pagado && seCobra(t))}
+                        onClick={() => setRecibo({ preseleccion: [t.id] })}
+                      >
+                        <ReceiptText size={15} />
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -257,6 +369,19 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
       </div>
       {paciente && imprimiendo && <ImpresionFicha paciente={paciente} turnos={turnos} onTerminar={terminarImpresion} />}
     </div>
+    {recibo && paciente && (
+      <ReciboModal
+        pacienteId={paciente.id}
+        pacienteNombre={paciente.nombre}
+        preseleccion={recibo.preseleccion}
+        onEmitido={() => {
+          setUltimoPago(null);
+          setVersionRecibos((v) => v + 1);
+          void cargarTurnos();
+        }}
+        onCerrar={() => setRecibo(null)}
+      />
+    )}
     {nota && (
       <NotaModal
         notaId={nota.id}

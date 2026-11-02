@@ -4,7 +4,7 @@ import { hojasExportacion, nombreArchivo } from "./logica";
 describe("exportación", () => {
   it("arma las tres hojas con formato legible", () => {
     const hojas = hojasExportacion({
-      pacientes: [{ id: 1, nombre: "Ana", telefono: null, email: null, monto_sesion: 25000, notas: null, activo: 1 }],
+      pacientes: [{ id: 1, nombre: "Ana", telefono: null, email: null, monto_sesion: 25000, notas: null, activo: 1, documento: null }],
       turnos: [
         {
           id: 1, paciente_id: 1, paciente_nombre: "Ana", inicio: "2026-10-31T09:00", duracion_min: 50,
@@ -16,12 +16,24 @@ describe("exportación", () => {
         },
       ],
       gastos: [{ id: 1, mes: "2026-10", descripcion: "Alquiler", monto: 100000, fijo: 1 }],
+      recibos: [
+        {
+          id: 1, numero: 7, fecha: "2026-11-02", paciente_id: 1, paciente_nombre: "Ana", paciente_documento: "30111222",
+          total: 37500, medio_pago: "Transferencia", items: [
+            { turno_id: 1, fecha: "2026-10-31", concepto: "Sesión", importe: 25000 },
+            { turno_id: 2, fecha: "2026-11-07", concepto: "Sesión (ausencia)", importe: 12500 },
+          ],
+          emisor: { nombre: "Lic. X", titulo: "", matricula: "", cuit: "", domicilio: "", telefono: "", email: "", leyenda: "" },
+          anulado_en: null, motivo_anulacion: null, creado_en: "2026-11-02 10:00:00",
+        },
+      ],
     });
-    expect(hojas.map((h) => h.nombre)).toEqual(["Pacientes", "Turnos", "Gastos"]);
-    expect(hojas[0].filas[0]).toEqual(["Ana", null, null, 25000, "Sí", null]);
+    expect(hojas.map((h) => h.nombre)).toEqual(["Pacientes", "Turnos", "Gastos", "Recibos"]);
+    expect(hojas[0].filas[0]).toEqual(["Ana", null, null, null, 25000, "Sí", null]);
     expect(hojas[1].filas[0]).toEqual(["31/10/2026 09:00", "Ana", 50, "Realizado", 25000, null, "No", null]);
     expect(hojas[1].filas[1]).toEqual(["07/11/2026 09:00", "Ana", 50, "Ausente sin aviso", 25000, 12500, "No", null]);
     expect(hojas[2].filas[0]).toEqual(["10/2026", "Alquiler", 100000, "Sí"]);
+    expect(hojas[3].filas[0]).toEqual(["00000007", "02/11/2026", "Ana", "30111222", "Transferencia", 2, 37500, "Vigente"]);
     for (const h of hojas) for (const f of h.filas) expect(f).toHaveLength(h.columnas.length);
   });
 

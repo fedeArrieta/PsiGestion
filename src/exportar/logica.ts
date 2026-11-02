@@ -1,4 +1,5 @@
 import type { DatosExportacion } from "../repositorio";
+import { fechaCorta, numeroRecibo } from "../recibos/logica";
 import { etiquetaEstado } from "../ausencias/logica";
 
 export type TipoColumna = "texto" | "numero" | "pesos";
@@ -24,11 +25,12 @@ export function hojasExportacion(datos: DatosExportacion): HojaExcel[] {
         { titulo: "Nombre", ancho: 28 },
         { titulo: "Teléfono" },
         { titulo: "Email", ancho: 26 },
+        { titulo: "DNI / CUIT", ancho: 16 },
         { titulo: "Monto por sesión", tipo: "pesos" },
         { titulo: "Activo", ancho: 8 },
         { titulo: "Notas", ancho: 40 },
       ],
-      filas: datos.pacientes.map((p) => [p.nombre, p.telefono, p.email, p.monto_sesion, siNo(p.activo), p.notas]),
+      filas: datos.pacientes.map((p) => [p.nombre, p.telefono, p.email, p.documento, p.monto_sesion, siNo(p.activo), p.notas]),
     },
     {
       nombre: "Turnos",
@@ -62,6 +64,29 @@ export function hojasExportacion(datos: DatosExportacion): HojaExcel[] {
         { titulo: "Fijo", ancho: 8 },
       ],
       filas: datos.gastos.map((g) => [mesTexto(g.mes), g.descripcion, g.monto, siNo(g.fijo)]),
+    },
+    {
+      nombre: "Recibos",
+      columnas: [
+        { titulo: "Número", ancho: 12 },
+        { titulo: "Fecha", ancho: 12 },
+        { titulo: "Paciente", ancho: 28 },
+        { titulo: "DNI / CUIT", ancho: 16 },
+        { titulo: "Forma de pago", ancho: 18 },
+        { titulo: "Sesiones", tipo: "numero" },
+        { titulo: "Total", tipo: "pesos" },
+        { titulo: "Estado", ancho: 30 },
+      ],
+      filas: datos.recibos.map((r) => [
+        numeroRecibo(r.numero),
+        fechaCorta(r.fecha),
+        r.paciente_nombre,
+        r.paciente_documento,
+        r.medio_pago,
+        r.items.length,
+        r.total,
+        r.anulado_en ? `Anulado el ${fechaCorta(r.anulado_en)}` : "Vigente",
+      ]),
     },
   ];
 }
