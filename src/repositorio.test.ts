@@ -46,6 +46,14 @@ import {
   obtenerSerie,
   previsualizarSerie,
   terminarSerie,
+  actualizarNota,
+  crearNota,
+  eliminarNota,
+  listarNotas,
+  listarVersionesNota,
+  notaDeTurno,
+  obtenerNota,
+  turnosConNota,
   type Db,
 } from "./repositorio";
 
@@ -574,6 +582,129 @@ describe("repositorio", () => {
       const [elemento] = await listarPapelera(db);
       await restaurarDePapelera(db, elemento.id);
       expect((await listarTurnosDePaciente(db, ana)).filter((t) => t.serie_id === serieId)).toHaveLength(3);
+    });
+  });
+
+  describe("notas clínicas", () => {
+    const secciones = (motivo: string, obs = "", tareas = "") => [
+      { titulo: "Motivo de consulta", texto: motivo },
+      { titulo: "Observaciones", texto: obs },
+      { titulo: "Tareas", texto: tareas },
+    ];
+
+    it("crea una nota vinculada a la sesión y la lista con el paciente", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const turno = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50 });
+      const id = await crearNota(db, {
+        paciente_id: ana,
+        turno_id: turno,
+        fecha: "2026-11-03",
+        plantilla: "sesion",
+        secciones: secciones("Ansiedad en el trabajo", "Mejor ánimo  \n"),
+      });
+      const nota = await obtenerNota(db, id);
+      expect(nota).toMatchObject({ paciente_nombre: "Ana", turno_id: turno, turno_inicio: "2026-11-03T10:00", fecha: "2026-11-03" });
+      expect(nota!.secciones).toEqual(secciones("Ansiedad en el trabajo", "Mejor ánimo"));
+      expect((await notaDeTurno(db, turno))!.id).toBe(id);
+      expect(await turnosConNota(db, ana)).toEqual(new Set([turno]));
+      expect(await listarNotas(db, { pacienteId: ana + 1 })).toEqual([]);
+    });
+
+    it("valida la nota", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const beto = await crearPaciente(db, { nombre: "Beto" });
+      const turno = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50 });
+      const base = { paciente_id: ana, fecha: "2026-11-03", plantilla: "sesion" };
+      await expect(crearNota(db, { ...base, secciones: secciones("  ") })).rejects.toThrow("vacía");
+      await expect(crearNota(db, { ...base, fecha: "3/11", secciones: secciones("x") })).rejects.toThrow("fecha");
+      await expect(crearNota(db, { ...base, paciente_id: beto, turno_id: turno, secciones: secciones("x") })).rejects.toThrow(
+        "otro paciente",
+      );
+      await crearNota(db, { ...base, turno_id: turno, secciones: secciones("x") });
+      await expect(crearNota(db, { ...base, turno_id: turno, secciones: secciones("y") })).rejects.toThrow("ya tiene una nota");
+    });
+
+    it("lista de la más nueva a la más vieja", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const base = { paciente_id: ana, plantilla: "libre" };
+      await crearNota(db, { ...base, fecha: "2026-10-01", secciones: [{ titulo: "Nota", texto: "a" }] });
+      await crearNota(db, { ...base, fecha: "2026-11-01", secciones: [{ titulo: "Nota", texto: "b" }] });
+      expect((await listarNotas(db)).map((n) => n.fecha)).toEqual(["2026-11-01", "2026-10-01"]);
+    });
+
+    it("guarda las versiones anteriores al modificar", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const d = { paciente_id: ana, fecha: "2026-11-03", plantilla: "sesion" };
+      const id = await crearNota(db, { ...d, secciones: secciones("Primera") });
+      await actualizarNota(db, id, { ...d, secciones: secciones("Segunda") }, "2026-11-03T12:00");
+      await actualizarNota(db, id, { ...d, secciones: secciones("Segunda") }, "2026-11-03T12:05"); // sin cambios
+      await actualizarNota(db, id, { ...d, secciones: secciones("Tercera") }, "2026-11-04T09:00");
+      const versiones = await listarVersionesNota(db, id);
+      expect(versiones.map((v) => v.secciones[0].texto)).toEqual(["Segunda", "Primera"]);
+      expect(versiones[0].guardada_en).toBe("2026-11-03 12:05");
+      expect((await obtenerNota(db, id))!.modificado_en).toBe("2026-11-04 09:00");
+    });
+
+    it("eliminar la manda a la papelera sin el contenido en la descripción, y se puede restaurar", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const turno = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50 });
+      const d = { paciente_id: ana, turno_id: turno, fecha: "2026-11-03", plantilla: "sesion" };
+      const id = await crearNota(db, { ...d, secciones: secciones("Secreto") });
+      await actualizarNota(db, id, { ...d, secciones: secciones("Secreto 2") }, "2026-11-03T12:00");
+      const papeleraId = await eliminarNota(db, id);
+      expect(await listarNotas(db)).toEqual([]);
+      const [elemento] = await listarPapelera(db);
+      expect(elemento).toMatchObject({ id: papeleraId, tipo: "nota", descripcion: "Nota clínica de Ana (2026-11-03)" });
+      expect(elemento.descripcion).not.toContain("Secreto");
+
+      // Vaciar la papelera de otras cosas no borra las versiones de una nota que está en la papelera.
+      const gasto = await crearGasto(db, { mes: "2026-11", descripcion: "Luz", monto: 1 });
+      const gastoPapelera = await eliminarGasto(db, gasto);
+      await borrarDePapelera(db, gastoPapelera!);
+      expect(await listarVersionesNota(db, id)).toHaveLength(1);
+
+      await restaurarDePapelera(db, papeleraId!);
+      const nota = await obtenerNota(db, id);
+      expect(nota).toMatchObject({ turno_id: turno, modificado_en: "2026-11-03 12:00" });
+      expect(nota!.secciones[0].texto).toBe("Secreto 2");
+      expect(await listarVersionesNota(db, id)).toHaveLength(1);
+    });
+
+    it("si la sesión ya tiene otra nota, la restaurada vuelve sin vincular", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const turno = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50 });
+      const d = { paciente_id: ana, turno_id: turno, fecha: "2026-11-03", plantilla: "sesion" };
+      const id = await crearNota(db, { ...d, secciones: secciones("Vieja") });
+      const papeleraId = await eliminarNota(db, id);
+      await crearNota(db, { ...d, secciones: secciones("Nueva") });
+      await restaurarDePapelera(db, papeleraId!);
+      expect((await obtenerNota(db, id))!.turno_id).toBeNull();
+    });
+
+    it("borrar la nota de la papelera borra también sus versiones", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const d = { paciente_id: ana, fecha: "2026-11-03", plantilla: "sesion" };
+      const id = await crearNota(db, { ...d, secciones: secciones("Uno") });
+      await actualizarNota(db, id, { ...d, secciones: secciones("Dos") }, "2026-11-03T12:00");
+      const papeleraId = await eliminarNota(db, id);
+      await borrarDePapelera(db, papeleraId!);
+      expect(await listarVersionesNota(db, id)).toEqual([]);
+    });
+
+    it("la nota sigue vinculada si el turno va a la papelera y vuelve", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      const turno = await crearTurno(db, { paciente_id: ana, inicio: "2026-11-03T10:00", duracion_min: 50 });
+      const id = await crearNota(db, { paciente_id: ana, turno_id: turno, fecha: "2026-11-03", plantilla: "sesion", secciones: secciones("x") });
+      const papeleraId = await eliminarTurno(db, turno);
+      expect((await obtenerNota(db, id))!.turno_inicio).toBeNull();
+      await restaurarDePapelera(db, papeleraId!);
+      expect((await obtenerNota(db, id))!.turno_inicio).toBe("2026-11-03T10:00");
+    });
+
+    it("las notas no se exportan a Excel", async () => {
+      const ana = await crearPaciente(db, { nombre: "Ana" });
+      await crearNota(db, { paciente_id: ana, fecha: "2026-11-03", plantilla: "sesion", secciones: secciones("Secreto") });
+      expect(JSON.stringify(await datosParaExportar(db, null))).not.toContain("Secreto");
     });
   });
 });

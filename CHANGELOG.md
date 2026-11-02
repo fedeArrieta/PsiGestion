@@ -2,6 +2,22 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.5.0] - 2026-11-02
+
+### Nuevo
+
+- Diario clínico de cada paciente: en la ficha del paciente, la pestaña "Diario clínico" muestra todas sus notas de la más nueva a la más vieja, con el texto completo, un buscador y el botón "Nueva nota". Cada nota puede quedar vinculada a una sesión de la agenda.
+- Sección "Notas clínicas" en el menú para buscar en las notas de todos los pacientes; desde cada resultado se abre la nota o el diario del paciente.
+- Plantillas para empezar la nota: "Sesión" (motivo de consulta, observaciones y tareas), "Primera entrevista" y "Nota libre". Si se cambia de plantilla no se pierde lo escrito.
+- La búsqueda no distingue mayúsculas ni tildes y resalta las palabras encontradas.
+- Desde un turno de la agenda, el botón "Nota de la sesión" abre (o crea) la nota de ese turno. En la ficha del paciente, cada sesión tiene un ícono para ver o escribir su nota.
+- Cada vez que se modifica una nota se guarda la versión anterior, que se puede consultar desde la misma nota.
+- Las notas eliminadas van a la papelera durante 30 días y se pueden recuperar (o deshacer en el momento).
+
+### Privacidad
+
+- Las notas se guardan dentro de la base cifrada con tu contraseña y entran en las copias de seguridad (también cifradas). No se incluyen en la exportación a Excel ni se escriben en el registro de errores, y la papelera solo muestra paciente y fecha, nunca el contenido.
+
 ## [0.4.0] - 2026-11-02
 
 ### Nuevo

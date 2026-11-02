@@ -8,6 +8,7 @@ import {
   Info,
   Lock,
   Moon,
+  NotebookPen,
   ShieldCheck,
   Sparkles,
   SunMedium,
@@ -35,6 +36,7 @@ import { Logo } from "./marca/Logo";
 import { guardarTema, leerTema, NOMBRE_TEMA, SIGUIENTE_TEMA, type Tema } from "./marca/tema";
 import Pacientes from "./pacientes/Pacientes";
 import Finanzas from "./finanzas/Finanzas";
+import NotasClinicas from "./notas/NotasClinicas";
 import Acceso from "./seguridad/Acceso";
 import Papelera, { BarraDeshacer } from "./papelera/Papelera";
 import Seguridad, { leerMinutosBloqueo } from "./seguridad/Seguridad";
@@ -46,7 +48,7 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import "./App.css";
 import { textoError } from "./errores";
 
-type Seccion = "inicio" | "agenda" | "pacientes" | "finanzas" | "copias" | "papelera" | "seguridad" | "version";
+type Seccion = "inicio" | "agenda" | "pacientes" | "notas" | "finanzas" | "copias" | "papelera" | "seguridad" | "version";
 
 type Icono = ComponentType<LucideProps>;
 
@@ -54,6 +56,7 @@ const SECCIONES: { id: Seccion; titulo: string; icono: Icono }[] = [
   { id: "inicio", titulo: "Inicio", icono: House },
   { id: "agenda", titulo: "Agenda", icono: CalendarDays },
   { id: "pacientes", titulo: "Pacientes", icono: Users },
+  { id: "notas", titulo: "Notas clínicas", icono: NotebookPen },
   { id: "finanzas", titulo: "Finanzas", icono: ChartColumn },
 ];
 
@@ -331,6 +334,7 @@ function Principal({ onBloquear }: { onBloquear: () => void }) {
         {seccion === "inicio" && <Inicio nombre={nombre} onNombre={cambiarNombre} onIr={irDesdeInicio} />}
         {seccion === "agenda" && <Agenda abrirNuevo={abrirNuevoTurno} />}
         {seccion === "pacientes" && <Pacientes />}
+        {seccion === "notas" && <NotasClinicas />}
         {seccion === "finanzas" && <Finanzas />}
         {seccion === "copias" && <Copias onCambio={revisarCopias} />}
         {seccion === "papelera" && <Papelera />}

@@ -83,6 +83,7 @@ Hecho en el paso 3:
 - Una base sin cifrar de una versión anterior, o restaurada desde una copia vieja, se cifra sola al desbloquear.
 - Las copias de seguridad quedan cifradas con la misma clave. Junto a ellas se guarda `psigestion-llave.json` (protegido por la contraseña y la clave de recuperación), que hace falta para abrirlas en otra computadora: la app lo pide si encuentra una base cifrada sin ese archivo.
 - La sección Copias marca las copias viejas sin cifrar y permite borrarlas.
+- Las notas clínicas (versión 0.5.0) se guardan en la misma base cifrada, igual que sus versiones anteriores y las que están en la papelera. No se exportan a Excel, no aparecen en el registro de errores y la papelera solo muestra paciente y fecha.
 
 **Riesgo aceptado**: si se pierden la contraseña y la clave de recuperación, los datos no se pueden recuperar.
 
