@@ -2,6 +2,12 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.9.2] - 2026-11-03
+
+### Corregido
+
+- Actualizar desde la app a veces fallaba con "No se ha podido cerrar PsiGestion": el instalador arrancaba mientras la app todavía se estaba cerrando. Ahora espera a que la app termine de cerrarse. Rige para las actualizaciones que se hagan desde esta versión en adelante.
+
 ## [0.9.1] - 2026-11-03
 
 ### Nuevo

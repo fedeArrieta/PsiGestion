@@ -67,10 +67,18 @@ fn lanzar_instalador(version: &str, bytes: &[u8]) -> Result<(), String> {
 
     // /P: instalación pasiva (solo barra de progreso), /R: abrir la app al terminar,
     // /UPDATE: le indica al instalador que es una actualización (mismos argumentos que usa el plugin).
-    std::process::Command::new(&ruta)
-        .args(["/P", "/R", "/UPDATE"])
-        .spawn()
-        .map_err(|e| format!("No se pudo abrir el instalador: {e}"))?;
+    //
+    // El instalador no se abre directo: si arranca mientras este proceso todavía se está
+    // terminando, lo encuentra, no lo puede cerrar (Windows no deja terminar un proceso que ya
+    // se está cerrando) y falla con "No se ha podido cerrar PsiGestion". Por eso lo abre un
+    // PowerShell oculto que primero espera a que este proceso haya terminado del todo.
+    if let Err(e) = lanzar_cuando_termine(&ruta) {
+        log::warn!("no se pudo esperar el cierre antes de instalar ({e}); se abre el instalador directo");
+        std::process::Command::new(&ruta)
+            .args(["/P", "/R", "/UPDATE"])
+            .spawn()
+            .map_err(|e| format!("No se pudo abrir el instalador: {e}"))?;
+    }
 
     log::logger().flush();
     // Terminar ya: el instalador encuentra la app cerrada y no queda ningún proceso trabado.
@@ -80,7 +88,44 @@ fn lanzar_instalador(version: &str, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Abre el instalador recién cuando este proceso terminó (más medio segundo de margen).
+#[cfg(windows)]
+fn lanzar_cuando_termine(instalador: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command"])
+        .arg(comando_espera(std::process::id(), &instalador.to_string_lossy()))
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+}
+
+/// Comando de PowerShell que espera a que termine el proceso `pid` y abre el instalador.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn comando_espera(pid: u32, instalador: &str) -> String {
+    // Entre comillas simples de PowerShell solo hay que duplicar las comillas simples.
+    let ruta = instalador.replace('\'', "''");
+    format!(
+        "Wait-Process -Id {pid} -Timeout 30 -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; \
+         Start-Process -FilePath '{ruta}' -ArgumentList '/P','/R','/UPDATE'"
+    )
+}
+
 #[cfg(not(windows))]
 fn lanzar_instalador(_version: &str, _bytes: &[u8]) -> Result<(), String> {
     Err("La instalación automática solo está disponible en Windows.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::comando_espera;
+
+    #[test]
+    fn el_comando_espera_al_proceso_y_escapa_la_ruta() {
+        let c = comando_espera(1234, r"C:\Users\o'brien\AppData\Local\Temp\PsiGestion_0.9.2_x64-setup.exe");
+        assert!(c.starts_with("Wait-Process -Id 1234 "));
+        assert!(c.contains(r"-FilePath 'C:\Users\o''brien\AppData\Local\Temp\PsiGestion_0.9.2_x64-setup.exe'"));
+        assert!(c.contains("-ArgumentList '/P','/R','/UPDATE'"));
+    }
 }
