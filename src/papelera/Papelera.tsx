@@ -11,6 +11,7 @@ import {
   type ElementoPapelera,
 } from "../repositorio";
 import { alOfrecerDeshacer, avisarDatosCambiados, type OfertaDeshacer } from "./deshacer";
+import { confirmar } from "../dialogo";
 
 /** "2026-11-02T10:00" o "2026-11-02 10:00:00" → "02/11/2026 10:00" */
 export function fechaLegible(texto: string): string {
@@ -71,8 +72,8 @@ export default function Papelera() {
                 <button onClick={() => ejecutar(async () => restaurarDePapelera(await obtenerDb(), e.id))}>Restaurar</button>
                 <button
                   className="peligro"
-                  onClick={() => {
-                    if (window.confirm("¿Borrar definitivamente? No se puede deshacer."))
+                  onClick={async () => {
+                    if (await confirmar("¿Borrar definitivamente? No se puede deshacer."))
                       ejecutar(async () => borrarDePapelera(await obtenerDb(), e.id));
                   }}
                 >

@@ -527,6 +527,11 @@ export async function agregarNoLaborable(db: Db, d: DatosNoLaborable): Promise<R
   return { quitados, sueltos };
 }
 
+/** Cambia un período cargado de feriado a vacaciones o al revés (no toca los turnos). */
+export async function cambiarTipoNoLaborable(db: Db, id: number, tipo: "feriado" | "vacaciones"): Promise<void> {
+  await db.execute("UPDATE no_laborables SET tipo = $1 WHERE id = $2", [tipo, id]);
+}
+
 /** Carga los feriados indicados que todavía no estén (no pisa los días ya cargados). */
 export async function cargarFeriados(db: Db, feriados: DatosNoLaborable[]): Promise<ResultadoNoLaborable & { agregados: number }> {
   const existentes = await listarNoLaborables(db);

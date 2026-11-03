@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permisos de la ventana principal: solo lo que usa la app (leer y escribir la base, que abre Rust, elegir archivos o carpetas, registrar errores, buscar e instalar actualizaciones y abrir los recordatorios en WhatsApp o en el programa de correo).",
+  "description": "Permisos de la ventana principal: solo lo que usa la app (leer y escribir la base, que abre Rust, elegir archivos o carpetas, pedir confirmación antes de borrar o cambiar algo, registrar errores, buscar e instalar actualizaciones y abrir los recordatorios en WhatsApp o en el programa de correo).",
   "windows": [
     "main"
   ],
@@ -11,6 +11,7 @@
     "sql:allow-execute",
     "dialog:allow-open",
     "dialog:allow-save",
+    "dialog:allow-message",
     "log:allow-log",
     "updater:allow-check",
     {

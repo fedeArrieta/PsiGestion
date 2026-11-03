@@ -16,6 +16,7 @@ import {
 import { textoError } from "../errores";
 import type { DatosSerie, VistaPreviaSerie } from "../repositorio";
 import { FRECUENCIAS, textoSerie } from "./series";
+import { confirmar } from "../dialogo";
 
 /** Cómo se repite el turno: null = no se repite. */
 export interface Repeticion {
@@ -226,7 +227,7 @@ export default function TurnoModal(props: Props) {
 
   async function eliminar() {
     if (!turno) return;
-    if (!window.confirm("¿Eliminar este turno? Si el paciente no vino, mejor marcalo como Cancelado o Ausente."))
+    if (!(await confirmar("¿Eliminar este turno? Si el paciente no vino, mejor marcalo como Cancelado o Ausente.")))
       return;
     setGuardando(true);
     try {
@@ -241,9 +242,9 @@ export default function TurnoModal(props: Props) {
     if (!turno || !serie) return;
     const desde = turno.inicio.slice(0, 10);
     if (
-      !window.confirm(
+      !(await confirmar(
         `¿Terminar la serie "${textoSerie(serie)}"?\n\nSe quitan este turno y los siguientes que estén programados (van a la papelera). Los anteriores quedan como están.`,
-      )
+      ))
     )
       return;
     setGuardando(true);

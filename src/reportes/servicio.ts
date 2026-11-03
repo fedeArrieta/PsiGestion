@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { obtenerDb } from "../db";
+import { pdfReporte } from "../pdf/cliente";
 import { leerConfiguracion, type DatosReporte } from "../repositorio";
 import { leerEmisor } from "../recibos/logica";
 import { hojasReporte, nombreArchivoReporte, type MesReporte, type Periodo, type TotalesReporte } from "./logica";
@@ -17,9 +18,8 @@ export async function exportarPdfReporte(periodo: Periodo, meses: MesReporte[], 
   if (!elegida) return null;
   const ruta = conExtension(elegida, "pdf");
   const emisor = leerEmisor(await leerConfiguracion(await obtenerDb()));
-  // pdf-lib se carga recién acá, así no demora el inicio de la app.
-  const { generarPdfReporte } = await import("./pdf");
-  const contenido = await generarPdfReporte({ periodo, meses, totales, emisor, generado: new Date() });
+  // El PDF se arma en un worker (ver src/pdf/worker.ts), que carga pdf-lib recién al usarlo.
+  const contenido = await pdfReporte({ periodo, meses, totales, emisor, generado: new Date() });
   await invoke("guardar_pdf", { ruta, contenido: Array.from(contenido) });
   return ruta;
 }

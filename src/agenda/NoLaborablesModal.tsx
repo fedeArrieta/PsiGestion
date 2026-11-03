@@ -5,12 +5,17 @@ import { aFechaIso, desdeIsoLocal } from "../fechas";
 import { textoError } from "../errores";
 import {
   agregarNoLaborable,
+  cambiarTipoNoLaborable,
   cargarFeriados,
   eliminarNoLaborable,
   listarNoLaborables,
   type ResultadoNoLaborable,
 } from "../repositorio";
 import type { NoLaborable } from "../tipos";
+
+type TipoNoLaborable = NoLaborable["tipo"];
+const NOMBRE_TIPO: Record<TipoNoLaborable, string> = { feriado: "Feriado", vacaciones: "Vacaciones" };
+const OTRO_TIPO: Record<TipoNoLaborable, TipoNoLaborable> = { feriado: "vacaciones", vacaciones: "feriado" };
 import { feriadosNacionales } from "./series";
 
 interface Props {
@@ -43,6 +48,7 @@ export default function NoLaborablesModal({ onCambio, onCerrar }: Props) {
   const [desde, setDesde] = useState(hoy);
   const [hasta, setHasta] = useState(hoy);
   const [descripcion, setDescripcion] = useState("");
+  const [tipo, setTipo] = useState<TipoNoLaborable>("feriado");
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -83,11 +89,17 @@ export default function NoLaborablesModal({ onCambio, onCerrar }: Props) {
   const agregar = (e: React.FormEvent) => {
     e.preventDefault();
     hacer(async () => {
-      const r = await agregarNoLaborable(await obtenerDb(), { desde, hasta, descripcion, tipo: "vacaciones" });
+      const r = await agregarNoLaborable(await obtenerDb(), { desde, hasta, descripcion, tipo });
       setDescripcion("");
       return textoResultado(r) || "Listo.";
-    }, "agregar vacaciones");
+    }, tipo === "feriado" ? "agregar feriado" : "agregar vacaciones");
   };
+
+  const cambiarTipo = (p: NoLaborable) =>
+    hacer(async () => {
+      await cambiarTipoNoLaborable(await obtenerDb(), p.id, OTRO_TIPO[p.tipo]);
+      return `"${p.descripcion}" ahora figura como ${NOMBRE_TIPO[OTRO_TIPO[p.tipo]].toLowerCase()}.`;
+    }, "cambiar tipo de feriado o vacaciones");
 
   const feriados = (a: number) =>
     hacer(async () => {
@@ -128,9 +140,20 @@ export default function NoLaborablesModal({ onCambio, onCerrar }: Props) {
             Hasta
             <input type="date" required min={desde} value={hasta} onChange={(e) => setHasta(e.target.value)} />
           </label>
+          <label>
+            Tipo
+            <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoNoLaborable)}>
+              <option value="feriado">Feriado</option>
+              <option value="vacaciones">Vacaciones</option>
+            </select>
+          </label>
           <label className="crece">
             Descripción
-            <input placeholder="Vacaciones de verano" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+            <input
+              placeholder={tipo === "feriado" ? "Feriado puente" : "Vacaciones de verano"}
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+            />
           </label>
         </div>
         <div className="acciones">
@@ -147,7 +170,7 @@ export default function NoLaborablesModal({ onCambio, onCerrar }: Props) {
         </div>
         <small className="nota">
           Los feriados nacionales se calculan según la ley (con los trasladables ya movidos). Los días puente y los no laborables
-          que se decretan cada año agregalos a mano.
+          que se decretan cada año agregalos a mano, eligiendo el tipo. Para cambiar el tipo de uno ya cargado, tocá su etiqueta.
         </small>
 
         {mensaje && <p className="nota-agenda">{mensaje}</p>}
@@ -167,7 +190,15 @@ export default function NoLaborablesModal({ onCambio, onCerrar }: Props) {
                     </td>
                     <td>
                       {p.descripcion}
-                      <span className="etiqueta">{p.tipo === "feriado" ? "Feriado" : "Vacaciones"}</span>
+                      <button
+                        type="button"
+                        className="etiqueta"
+                        title={`Cambiar a ${NOMBRE_TIPO[OTRO_TIPO[p.tipo]].toLowerCase()}`}
+                        onClick={() => cambiarTipo(p)}
+                        disabled={ocupado}
+                      >
+                        {NOMBRE_TIPO[p.tipo]}
+                      </button>
                     </td>
                     <td className="derecha">
                       <button

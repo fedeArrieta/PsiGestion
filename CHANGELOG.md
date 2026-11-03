@@ -2,6 +2,19 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.9.1] - 2026-11-03
+
+### Nuevo
+
+- Feriados y vacaciones: al agregar uno a mano se elige el tipo (Feriado o Vacaciones). Para cambiar el tipo de uno ya cargado, tocá su etiqueta en la lista.
+- Recordatorios: se aclara desde dónde salen los mensajes (tu WhatsApp y tu programa de correo de esta computadora).
+
+### Corregido
+
+- Generar un recibo (o el recibo de ejemplo) daba el error "Cannot assign to read only property 'toString'". Lo mismo pasaba al exportar un reporte en PDF.
+- Las preguntas de confirmación (por ejemplo "¿Eliminar este turno?") no aparecían y la acción se hacía igual. Ahora se muestran y, si respondés No, no se hace nada.
+- Si ocurre un error interno, la app ya no se cierra de golpe: queda anotado en el registro de errores para poder corregirlo.
+
 ## [0.9.0] - 2026-11-02
 
 ### Nuevo

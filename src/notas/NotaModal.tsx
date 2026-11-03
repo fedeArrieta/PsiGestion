@@ -19,6 +19,7 @@ import { textoError } from "../errores";
 import { ofrecerDeshacer } from "../papelera/deshacer";
 import { fechaLegible } from "../papelera/Papelera";
 import { cambiarPlantilla, notaVacia, PLANTILLA_PREDETERMINADA, PLANTILLAS, plantilla, seccionesVacias } from "./logica";
+import { confirmar } from "../dialogo";
 
 export interface InicioNota {
   paciente_id?: number;
@@ -121,8 +122,8 @@ export default function NotaModal({ notaId, inicial, onGuardado, onCerrar }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [borrador.paciente_id]);
 
-  const cerrar = useCallback(() => {
-    if (sinGuardar && !window.confirm("La nota tiene cambios sin guardar. ¿Cerrar igual y descartarlos?")) return;
+  const cerrar = useCallback(async () => {
+    if (sinGuardar && !(await confirmar("La nota tiene cambios sin guardar. ¿Cerrar igual y descartarlos?"))) return;
     onCerrar();
   }, [sinGuardar, onCerrar]);
 
@@ -161,7 +162,7 @@ export default function NotaModal({ notaId, inicial, onGuardado, onCerrar }: Pro
   }, [cerrar, guardar, ocupado]);
 
   async function eliminar() {
-    if (!nota || !window.confirm("¿Eliminar esta nota? Va a la papelera y se puede recuperar durante 30 días.")) return;
+    if (!nota || !(await confirmar("¿Eliminar esta nota? Va a la papelera y se puede recuperar durante 30 días."))) return;
     setOcupado(true);
     try {
       const papeleraId = await eliminarNota(await obtenerDb(), nota.id);

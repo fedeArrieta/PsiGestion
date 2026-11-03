@@ -27,6 +27,7 @@ import ReciboModal from "../recibos/ReciboModal";
 import ListaRecibos from "../recibos/ListaRecibos";
 import { numeroRecibo } from "../recibos/logica";
 import { verPdf } from "../recibos/servicio";
+import { confirmar } from "../dialogo";
 
 interface Props {
   /** null = paciente nuevo */
@@ -129,15 +130,15 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
     });
   };
 
-  const alternarPago = (t: Turno) => {
+  const alternarPago = async (t: Turno) => {
     const numero = conRecibo.get(t.id);
     if (
       t.pagado &&
       numero != null &&
-      !window.confirm(
+      !(await confirmar(
         `Este pago figura en el recibo N° ${numeroRecibo(numero)}. Si lo desmarcás, el recibo sigue vigente: ` +
           "conviene anularlo en la pestaña Recibos. ¿Desmarcar el pago igual?",
-      )
+      ))
     )
       return;
     return ejecutar(async () => {
@@ -162,11 +163,11 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
       if (r) await verPdf(r);
     });
 
-  const cambiarActivo = () => {
+  const cambiarActivo = async () => {
     const darDeBaja = Boolean(paciente!.activo);
     if (
       darDeBaja &&
-      !window.confirm(`¿Dar de baja a ${paciente!.nombre}? Deja de aparecer en la agenda, pero se conserva su historial.`)
+      !(await confirmar(`¿Dar de baja a ${paciente!.nombre}? Deja de aparecer en la agenda, pero se conserva su historial.`))
     )
       return;
     return ejecutar(async () => {
