@@ -16,6 +16,7 @@ import { leerMonto, montoEditable, pesos } from "../formato";
 import { calcularMetas, mesDe, sumarMeses, textoMes, type Meta } from "./calculo";
 import { textoError } from "../errores";
 import { alCambiarDatos, ofrecerDeshacer } from "../papelera/deshacer";
+import { confirmar } from "../dialogo";
 
 export default function Finanzas() {
   const [mes, setMes] = useState(() => mesDe(new Date()));
@@ -320,8 +321,8 @@ function Gastos(props: { mes: string; gastos: Gasto[]; ejecutar: (a: () => Promi
                 type="button"
                 className="quitar"
                 aria-label={`Eliminar ${g.descripcion}`}
-                onClick={() => {
-                  if (window.confirm(`¿Eliminar "${g.descripcion}"?`))
+                onClick={async () => {
+                  if (await confirmar(`¿Eliminar "${g.descripcion}"?`))
                     ejecutar(async () =>
                       ofrecerDeshacer(`Se eliminó "${g.descripcion}".`, await eliminarGasto(await obtenerDb(), g.id)),
                     );

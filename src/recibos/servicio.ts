@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { obtenerDb } from "../db";
+import { pdfRecibo } from "../pdf/cliente";
 import { guardarConfiguracion, leerConfiguracion } from "../repositorio";
 import type { Recibo } from "../tipos";
 import { CLAVE_CARPETA, nombreArchivo } from "./logica";
@@ -16,9 +17,8 @@ export async function elegirCarpetaRecibos(carpeta: string | null): Promise<void
 
 /** Genera el PDF del recibo y lo guarda en la carpeta de recibos. Devuelve la ruta. */
 export async function guardarPdf(recibo: Recibo, ejemplo = false): Promise<string> {
-  // pdf-lib se carga recién al generar el primer recibo, así no demora el inicio de la app.
-  const { generarPdfRecibo } = await import("./pdf");
-  const contenido = await generarPdfRecibo(recibo, ejemplo);
+  // El PDF se arma en un worker (ver src/pdf/worker.ts), que carga pdf-lib recién al usarlo.
+  const contenido = await pdfRecibo(recibo, ejemplo);
   return invoke<string>("guardar_recibo", {
     carpeta: await carpetaRecibos(),
     nombre: ejemplo ? "Recibo de ejemplo.pdf" : nombreArchivo(recibo.numero, recibo.paciente_nombre, Boolean(recibo.anulado_en)),

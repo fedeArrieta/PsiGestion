@@ -1,6 +1,6 @@
 [package]
 name = "psigestion"
-version = "0.9.0"
+version = "0.9.1"
 description = "Agenda y finanzas para psicólogos"
 authors = ["Federico Arrieta"]
 edition = "2024"
@@ -50,7 +50,9 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
+# "unwind" y no "abort": si algo falla dentro de un comando, se registra (ver lib.rs) y la app
+# sigue abierta en lugar de cerrarse de golpe.
+panic = "unwind"
 strip = true
 
 [dev-dependencies]

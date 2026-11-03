@@ -170,6 +170,12 @@ export default function Recordatorios() {
         enviarlo. Los mensajes llevan solo el nombre, el día y la hora, nunca datos clínicos. Los turnos cancelados o
         con ausencia avisada no aparecen.
       </p>
+      <p className="nota">
+        <strong>¿Desde qué número o mail sale?</strong> Desde los tuyos, los que ya usás en esta computadora: WhatsApp manda
+        con la cuenta abierta en WhatsApp de escritorio o WhatsApp Web, y el mail sale de la cuenta configurada en tu
+        programa de correo predeterminado (por ejemplo Outlook, o Gmail si lo elegiste como predeterminado en Windows). No
+        hace falta configurarlos en la app.
+      </p>
       {error && <p className="error">{error}</p>}
       {aviso && <p className="aviso-ok">{aviso}</p>}
 

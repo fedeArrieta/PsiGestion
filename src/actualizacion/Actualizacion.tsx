@@ -11,6 +11,7 @@ import {
   omitirVersion,
   posponerAviso,
 } from "./servicio";
+import { confirmar } from "../dialogo";
 
 /** Barra discreta arriba del contenido (no tapa formularios ni bloquea el uso). */
 export function AvisoActualizacion({ update, onCerrar }: { update: Update; onCerrar: () => void }) {
@@ -20,7 +21,7 @@ export function AvisoActualizacion({ update, onCerrar }: { update: Update; onCer
   const [verNotas, setVerNotas] = useState(false);
 
   async function actualizar() {
-    if (!window.confirm(`¿Instalar la versión ${update.version}?\n\nAntes se hace una copia de seguridad. La app se cierra y se vuelve a abrir sola.`))
+    if (!(await confirmar(`¿Instalar la versión ${update.version}?\n\nAntes se hace una copia de seguridad. La app se cierra y se vuelve a abrir sola.`)))
       return;
     setEstado({ tipo: "instalando", porcentaje: null });
     try {

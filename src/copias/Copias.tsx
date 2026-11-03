@@ -14,6 +14,7 @@ import { copiaAtrasada, diasSinCopia, leerNombreCopia, tamanoTexto, TEXTO_TIPO, 
 import { textoError } from "../errores";
 import { exportarExcel } from "../exportar/servicio";
 import { mesDe, textoMes } from "../finanzas/calculo";
+import { confirmar } from "../dialogo";
 
 const fmtFecha = new Intl.DateTimeFormat("es-AR", { dateStyle: "medium", timeStyle: "short" });
 
@@ -65,10 +66,10 @@ export default function Copias({ onCambio }: { onCambio: () => void }) {
     }
   }
 
-  function restaurar(copia: ArchivoCopia) {
+  async function restaurar(copia: ArchivoCopia) {
     const info = leerNombreCopia(copia.nombre);
     const fecha = info ? fmtFecha.format(info.fecha) : copia.nombre;
-    const confirmado = window.confirm(
+    const confirmado = await confirmar(
       `¿Restaurar la copia del ${fecha}?\n\n` +
         "Se reemplazan todos los datos actuales por los de esa copia y la app se reinicia. " +
         "Antes se guarda una copia del estado actual, por si necesitás volver atrás.",
@@ -150,8 +151,8 @@ export default function Copias({ onCambio }: { onCambio: () => void }) {
               className="peligro"
               disabled={ocupado || !copias.some((c) => c.cifrada)}
               title={copias.some((c) => c.cifrada) ? undefined : "Primero hacé una copia cifrada"}
-              onClick={() => {
-                if (window.confirm("¿Borrar las copias que no están cifradas? Las cifradas se conservan."))
+              onClick={async () => {
+                if (await confirmar("¿Borrar las copias que no están cifradas? Las cifradas se conservan."))
                   ejecutar(async () => `Se borraron ${await borrarCopiasSinCifrar(config.carpeta)} copias sin cifrar.`);
               }}
             >

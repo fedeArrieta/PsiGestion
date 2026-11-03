@@ -10,6 +10,11 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Si algo falla en Rust, que quede en el registro (dónde y por qué) para poder arreglarlo.
+    std::panic::set_hook(Box::new(|info| {
+        log::error!("falla interna: {info}");
+        log::logger().flush();
+    }));
     tauri::Builder::default()
         .plugin(registro::plugin())
         .plugin(tauri_plugin_dialog::init())
