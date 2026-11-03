@@ -7,6 +7,8 @@ Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 ### Nuevo
 
 - Feriados y vacaciones: al agregar uno a mano se elige el tipo (Feriado o Vacaciones). Para cambiar el tipo de uno ya cargado, tocá su etiqueta en la lista.
+- Ficha del paciente: las sesiones se listan desde la más próxima, separadas en "Próximos" y "Anteriores" (del más reciente al más viejo).
+- Ficha del paciente: botones rediseñados. "Imprimir o PDF" y "Dar de baja" quedan como acciones chicas con ícono, arriba de Cerrar y Guardar.
 - Recordatorios: se aclara desde dónde salen los mensajes (tu WhatsApp y tu programa de correo de esta computadora).
 
 ### Corregido

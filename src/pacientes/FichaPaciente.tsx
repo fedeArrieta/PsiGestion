@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { NotebookPen, ReceiptText, X } from "lucide-react";
+import { NotebookPen, Printer, ReceiptText, UserMinus, UserPlus, X } from "lucide-react";
 import { obtenerDb } from "../db";
 import {
   actualizarPaciente,
@@ -20,6 +20,7 @@ import { etiquetaEstado, importeTurno, seCobra } from "../ausencias/logica";
 import { leerMonto, montoEditable, pesos } from "../formato";
 import { aIsoLocal, desdeIsoLocal } from "../fechas";
 import ImpresionFicha from "./ImpresionFicha";
+import { ordenarTurnosFicha } from "./logica";
 import { textoError } from "../errores";
 import NotaModal, { type InicioNota } from "../notas/NotaModal";
 import DiarioPaciente from "../notas/DiarioPaciente";
@@ -178,6 +179,13 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
   };
 
   // Saldo: sesiones realizadas y ausencias que se cobran, sin pagar.
+  // Primero los próximos (del más cercano) y después los anteriores (del más reciente).
+  const { proximos, anteriores } = ordenarTurnosFicha(turnos, new Date());
+  const grupos: [string, Turno[]][] = [
+    ["Próximos", proximos],
+    ["Anteriores", anteriores],
+  ];
+  const conTitulos = proximos.length > 0 && anteriores.length > 0;
   const saldo = turnos.filter((t) => !t.pagado).reduce((acc, t) => acc + importeTurno(t), 0);
 
   return (
@@ -214,17 +222,24 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
             <textarea rows={3} value={notas} onChange={(e) => setNotas(e.target.value)} />
           </label>
           {error && <p className="error">{error}</p>}
-          <div className="acciones">
-            {paciente && (
-              <button type="button" className={paciente.activo ? "peligro" : ""} onClick={cambiarActivo} disabled={ocupado}>
+          {paciente && (
+            <div className="acciones-secundarias">
+              <button type="button" className="sutil" onClick={() => setImprimiendo(true)} disabled={ocupado || imprimiendo}>
+                <Printer size={15} />
+                Imprimir o PDF
+              </button>
+              <button
+                type="button"
+                className={paciente.activo ? "sutil peligro" : "sutil"}
+                onClick={cambiarActivo}
+                disabled={ocupado}
+              >
+                {paciente.activo ? <UserMinus size={15} /> : <UserPlus size={15} />}
                 {paciente.activo ? "Dar de baja" : "Reactivar"}
               </button>
-            )}
-            {paciente && (
-              <button type="button" onClick={() => setImprimiendo(true)} disabled={ocupado || imprimiendo}>
-                Imprimir o guardar PDF
-              </button>
-            )}
+            </div>
+          )}
+          <div className="acciones">
             <span className="crece" />
             <button type="button" onClick={onCerrar} disabled={ocupado}>
               Cerrar
@@ -310,59 +325,66 @@ export default function FichaPaciente({ paciente, onCambio, onCerrar, pestanaIni
               <p className="vacio">Todavía no tiene turnos.</p>
             ) : (
               <ul className="lista-turnos">
-                {turnos.map((t) => (
-                  <li key={t.id} className={`estado-${t.estado}`}>
-                    <span className="crece">{fmtTurno.format(desdeIsoLocal(t.inicio))}</span>
-                    <span className="estado">{etiquetaEstado(t)}</span>
-                    <span className="num" title={t.estado === "ausente" ? (t.cargo != null ? "Se cobra la ausencia" : "La ausencia no se cobra") : undefined}>
-                      {t.estado === "ausente"
-                        ? t.cargo != null
-                          ? pesos(t.cargo)
-                          : "Sin cargo"
-                        : t.estado === "cancelado"
-                          ? "—"
-                          : pesos(t.monto)}
-                    </span>
-                    <button
-                      type="button"
-                      className={`boton-icono${conNota.has(t.id) ? " con-nota" : ""}`}
-                      title={conNota.has(t.id) ? "Ver la nota clínica de esta sesión" : "Escribir la nota clínica de esta sesión"}
-                      aria-label={conNota.has(t.id) ? "Ver nota clínica" : "Escribir nota clínica"}
-                      onClick={() =>
-                        setNota({ id: null, inicial: { paciente_id: t.paciente_id, turno_id: t.id, fecha: t.inicio.slice(0, 10) } })
-                      }
-                    >
-                      <NotebookPen size={15} />
-                    </button>
-                    <label className={seCobra(t) || t.pagado ? "check" : "check sin-cobro"} title="Pagado">
-                      <input type="checkbox" checked={Boolean(t.pagado)} onChange={() => alternarPago(t)} disabled={ocupado} />
-                      Pagado
-                    </label>
-                    {conRecibo.has(t.id) ? (
+                {grupos.map(([titulo, lista]) => [
+                  conTitulos && lista.length > 0 && (
+                    <li key={titulo} className="grupo-turnos">
+                      {titulo}
+                    </li>
+                  ),
+                  lista.map((t) => (
+                    <li key={t.id} className={`estado-${t.estado}`}>
+                      <span className="crece">{fmtTurno.format(desdeIsoLocal(t.inicio))}</span>
+                      <span className="estado">{etiquetaEstado(t)}</span>
+                      <span className="num" title={t.estado === "ausente" ? (t.cargo != null ? "Se cobra la ausencia" : "La ausencia no se cobra") : undefined}>
+                        {t.estado === "ausente"
+                          ? t.cargo != null
+                            ? pesos(t.cargo)
+                            : "Sin cargo"
+                          : t.estado === "cancelado"
+                            ? "—"
+                            : pesos(t.monto)}
+                      </span>
                       <button
                         type="button"
-                        className="boton-icono con-recibo"
-                        title={`Recibo N° ${numeroRecibo(conRecibo.get(t.id)!)}: abrir el PDF`}
-                        aria-label="Abrir el recibo"
-                        disabled={ocupado}
-                        onClick={() => verRecibo(conRecibo.get(t.id)!)}
+                        className={`boton-icono${conNota.has(t.id) ? " con-nota" : ""}`}
+                        title={conNota.has(t.id) ? "Ver la nota clínica de esta sesión" : "Escribir la nota clínica de esta sesión"}
+                        aria-label={conNota.has(t.id) ? "Ver nota clínica" : "Escribir nota clínica"}
+                        onClick={() =>
+                          setNota({ id: null, inicial: { paciente_id: t.paciente_id, turno_id: t.id, fecha: t.inicio.slice(0, 10) } })
+                        }
                       >
-                        <ReceiptText size={15} />
+                        <NotebookPen size={15} />
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className={`boton-icono${t.pagado && seCobra(t) ? "" : " oculto"}`}
-                        title="Emitir recibo de este pago"
-                        aria-label="Emitir recibo de este pago"
-                        disabled={ocupado || !(t.pagado && seCobra(t))}
-                        onClick={() => setRecibo({ preseleccion: [t.id] })}
-                      >
-                        <ReceiptText size={15} />
-                      </button>
-                    )}
-                  </li>
-                ))}
+                      <label className={seCobra(t) || t.pagado ? "check" : "check sin-cobro"} title="Pagado">
+                        <input type="checkbox" checked={Boolean(t.pagado)} onChange={() => alternarPago(t)} disabled={ocupado} />
+                        Pagado
+                      </label>
+                      {conRecibo.has(t.id) ? (
+                        <button
+                          type="button"
+                          className="boton-icono con-recibo"
+                          title={`Recibo N° ${numeroRecibo(conRecibo.get(t.id)!)}: abrir el PDF`}
+                          aria-label="Abrir el recibo"
+                          disabled={ocupado}
+                          onClick={() => verRecibo(conRecibo.get(t.id)!)}
+                        >
+                          <ReceiptText size={15} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`boton-icono${t.pagado && seCobra(t) ? "" : " oculto"}`}
+                          title="Emitir recibo de este pago"
+                          aria-label="Emitir recibo de este pago"
+                          disabled={ocupado || !(t.pagado && seCobra(t))}
+                          onClick={() => setRecibo({ preseleccion: [t.id] })}
+                        >
+                          <ReceiptText size={15} />
+                        </button>
+                      )}
+                    </li>
+                  )),
+                ])}
               </ul>
             )}
           </section>

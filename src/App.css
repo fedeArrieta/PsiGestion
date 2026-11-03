@@ -1116,6 +1116,28 @@ label.check,
   gap: 12px;
 }
 
+/* Imprimir y Dar de baja: acciones de menos peso, arriba de Cerrar/Guardar. */
+.acciones-secundarias {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 4px;
+}
+
+button.sutil {
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  border-color: transparent;
+  background: transparent;
+  color: var(--texto-suave);
+  white-space: nowrap;
+}
+
+button.sutil.peligro {
+  color: var(--atencion);
+  border-color: transparent;
+}
+
 .ficha-turnos {
   flex: 1;
   min-width: 0;
@@ -1129,9 +1151,14 @@ label.check,
 
 .ficha-turnos-cabecera {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.ficha-turnos-cabecera button {
+  white-space: nowrap;
 }
 
 .ficha-turnos h4 {
@@ -1153,6 +1180,19 @@ label.check,
   gap: 12px;
   padding: 8px 4px;
   border-bottom: 1px solid var(--borde);
+}
+
+.lista-turnos li.grupo-turnos {
+  padding: 12px 4px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+}
+
+.lista-turnos li.grupo-turnos:first-child {
+  padding-top: 4px;
 }
 
 .lista-turnos li::first-letter {
