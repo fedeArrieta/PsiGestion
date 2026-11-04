@@ -852,24 +852,19 @@ button.indicador:hover:not(:disabled) {
   gap: 8px;
 }
 
-/* Más angosto: la página crece hacia abajo y se desplaza; las listas de turnos tienen alto fijo. */
+/* Más angosto: siempre tres columnas; la columna de la derecha se achica y los indicadores pasan a 2×2. */
 @media (max-width: 1400px) {
-  .inicio {
-    flex: 1 0 auto;
-  }
   .inicio-columnas {
-    flex: 1 0 auto;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: 440px auto;
-    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(260px, 0.8fr);
   }
-  .inicio-lateral {
-    grid-column: 1 / -1;
+  .cifras-mes {
+    grid-template-columns: 1fr;
+  }
+  .cifras-mes div {
     flex-direction: row;
-    align-items: stretch;
-  }
-  .inicio-lateral > .panel {
-    flex: 1;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 6px 10px;
   }
 }
 
@@ -878,11 +873,11 @@ button.indicador:hover:not(:disabled) {
     grid-template-columns: repeat(2, 1fr);
   }
   .inicio-columnas {
-    grid-template-columns: 1fr;
-    grid-template-rows: 400px 400px auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(220px, 0.8fr);
+    gap: 12px;
   }
-  .inicio-lateral {
-    flex-direction: column;
+  .proximo .avatar {
+    display: none;
   }
 }
 
