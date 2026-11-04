@@ -53,7 +53,8 @@
       "nsis": {
         "languages": [
           "Spanish"
-        ]
+        ],
+        "installerHooks": "./windows/hooks.nsh"
       },
       "wix": {
         "language": "es-ES"
