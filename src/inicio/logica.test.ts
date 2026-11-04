@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { iniciales, saludoDelMomento, sumaRealizada, textoCuando, tonoTurno, tramoMesAnterior, variacion } from "./logica";
+import { agruparPorDia, iniciales, saludoDelMomento, sumaRealizada, textoCuando, tonoTurno, tramoMesAnterior, variacion } from "./logica";
 
 describe("inicio", () => {
   it("arma iniciales", () => {
@@ -54,5 +54,13 @@ describe("inicio", () => {
     // 31 de marzo: febrero tiene 28 días.
     expect(tramoMesAnterior(new Date(2026, 2, 31))).toEqual({ desde: "2026-02-01", hasta: "2026-03-01" });
     expect(tramoMesAnterior(new Date(2026, 0, 10))).toEqual({ desde: "2025-12-01", hasta: "2025-12-11" });
+  });
+
+  it("agrupa turnos por día conservando el orden", () => {
+    const turnos = [{ inicio: "2026-11-05T14:30" }, { inicio: "2026-11-05T15:30" }, { inicio: "2026-11-12T15:30" }];
+    expect(agruparPorDia(turnos)).toEqual([
+      { fecha: "2026-11-05", turnos: turnos.slice(0, 2) },
+      { fecha: "2026-11-12", turnos: turnos.slice(2) },
+    ]);
   });
 });

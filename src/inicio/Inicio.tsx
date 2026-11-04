@@ -5,6 +5,7 @@ import {
   CalendarPlus,
   ChartColumn,
   Check,
+  Clock,
   HandCoins,
   Pencil,
   TrendingDown,
@@ -14,13 +15,14 @@ import {
 } from "lucide-react";
 import { obtenerDb } from "../db";
 import { listarPacientesConResumen, listarTurnos, obtenerObjetivo, resumenMes } from "../repositorio";
-import type { TurnoConPaciente } from "../tipos";
+import type { PacienteConResumen, ResumenMes, TurnoConPaciente } from "../tipos";
 import { aIsoLocal, horaTexto, inicioDelDia, sumarDias, textoDiaLargo } from "../fechas";
 import { pesos } from "../formato";
-import { mesDe } from "../finanzas/calculo";
+import { calcularMetas, mesDe } from "../finanzas/calculo";
 import { textoError } from "../errores";
 import { alCambiarDatos } from "../papelera/deshacer";
 import {
+  agruparPorDia,
   iniciales,
   saludoDelMomento,
   sumaRealizada,
@@ -31,8 +33,10 @@ import {
 } from "./logica";
 
 /** Cuántos turnos mostrar en "Próximos turnos" y hasta cuántos días adelante buscarlos. */
-const CANTIDAD_PROXIMOS = 6;
+const CANTIDAD_PROXIMOS = 40;
 const DIAS_PROXIMOS = 14;
+/** Cuántos pacientes con saldo mostrar en "Por cobrar". */
+const CANTIDAD_DEUDORES = 8;
 
 interface Datos {
   turnosHoy: number;
@@ -44,7 +48,10 @@ interface Datos {
   variacionIngresos: number | null;
   neto: number;
   objetivo: number | null;
+  resumen: ResumenMes;
+  hoy: TurnoConPaciente[];
   proximos: TurnoConPaciente[];
+  deudores: PacienteConResumen[];
 }
 
 async function cargarDatos(ahora: Date): Promise<Datos> {
@@ -58,7 +65,7 @@ async function cargarDatos(ahora: Date): Promise<Datos> {
     resumenMes(db, mes),
     obtenerObjetivo(db, mes),
     listarTurnos(db, `${tramo.desde}T00:00`, `${tramo.hasta}T00:00`),
-    listarTurnos(db, aIsoLocal(ahora), aIsoLocal(sumarDias(hoy, DIAS_PROXIMOS))),
+    listarTurnos(db, aIsoLocal(sumarDias(hoy, 1)), aIsoLocal(sumarDias(hoy, DIAS_PROXIMOS + 1))),
   ]);
   const activosHoy = deHoy.filter((t) => t.estado !== "cancelado");
   const conDeuda = pacientes.filter((p) => p.saldo_pendiente > 0);
@@ -72,7 +79,10 @@ async function cargarDatos(ahora: Date): Promise<Datos> {
     variacionIngresos: variacion(resumen.facturado, sumaRealizada(mesAnterior)),
     neto: resumen.facturado - resumen.gastos,
     objetivo,
+    resumen,
+    hoy: deHoy,
     proximos: siguientes.filter((t) => t.estado === "programado").slice(0, CANTIDAD_PROXIMOS),
+    deudores: [...conDeuda].sort((a, b) => b.saldo_pendiente - a.saldo_pendiente).slice(0, CANTIDAD_DEUDORES),
   };
 }
 
@@ -187,48 +197,28 @@ export default function Inicio({
       </div>
 
       <div className="inicio-columnas">
-        <section className="panel">
+        <section className="panel inicio-panel">
           <div className="panel-cabecera">
-            <h3>Próximos turnos</h3>
+            <h3>Hoy</h3>
             <button className="enlace" onClick={() => onIr("agenda")}>
               Ver agenda <ArrowRight size={14} />
             </button>
           </div>
-          {datos && datos.proximos.length === 0 ? (
-            <p className="nota">No hay turnos en los próximos {DIAS_PROXIMOS} días.</p>
+          {datos && datos.hoy.length === 0 ? (
+            <div className="inicio-vacio">
+              <Clock size={28} />
+              <p>No tenés turnos hoy.</p>
+              <button className="secundario" onClick={() => onIr("nuevo-turno")}>
+                <CalendarPlus size={16} className="icono" /> Agendar un turno
+              </button>
+            </div>
           ) : (
-            <ul className="proximos">
-              {datos?.proximos.map((t) => {
-                const { tono, etiqueta } = tonoTurno(t);
-                return (
-                  <li key={t.id}>
-                    <button className="proximo" onClick={() => onIr("agenda")}>
-                      <span className="avatar">{iniciales(t.paciente_nombre)}</span>
-                      <span className="proximo-texto">
-                        <strong>{t.paciente_nombre}</strong>
-                        <span>
-                          {textoCuando(t.inicio, ahora)}
-                          {t.notas ? ` · ${t.notas.split("\n")[0]}` : ""}
-                        </span>
-                      </span>
-                      <span className="proximo-hora">{horaTexto(t.inicio)}</span>
-                      <span className={`punto ${tono}`} title={etiqueta} />
-                    </button>
-                  </li>
-                );
-              })}
+            <ul className="proximos desplazable">
+              {datos?.hoy.map((t) => (
+                <FilaTurno key={t.id} turno={t} ahora={ahora} soloHora onClick={() => onIr("agenda")} />
+              ))}
             </ul>
           )}
-        </section>
-
-        <section className="panel">
-          <div className="panel-cabecera">
-            <h3>Objetivo del mes</h3>
-            <button className="enlace" onClick={() => onIr("finanzas")}>
-              Finanzas <ArrowRight size={14} />
-            </button>
-          </div>
-          {datos && <ProgresoObjetivo neto={datos.neto} objetivo={datos.objetivo} />}
           <div className="leyenda-estados">
             <span className="chip ok">
               <span className="punto ok" /> Confirmado
@@ -244,8 +234,107 @@ export default function Inicio({
             </span>
           </div>
         </section>
+
+        <section className="panel inicio-panel">
+          <div className="panel-cabecera">
+            <h3>Próximos turnos</h3>
+            <span className="nota">Próximos {DIAS_PROXIMOS} días</span>
+          </div>
+          {datos && datos.proximos.length === 0 ? (
+            <div className="inicio-vacio">
+              <CalendarDays size={28} />
+              <p>No hay turnos en los próximos {DIAS_PROXIMOS} días.</p>
+            </div>
+          ) : (
+            <div className="desplazable">
+              {datos &&
+                agruparPorDia(datos.proximos).map(({ fecha, turnos }) => (
+                  <div key={fecha} className="proximos-dia">
+                    <h4>
+                      {textoCuando(turnos[0].inicio, ahora)}
+                      <span>
+                        {turnos.length} {turnos.length === 1 ? "turno" : "turnos"}
+                      </span>
+                    </h4>
+                    <ul className="proximos">
+                      {turnos.map((t) => (
+                        <FilaTurno key={t.id} turno={t} ahora={ahora} soloHora onClick={() => onIr("agenda")} />
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+            </div>
+          )}
+        </section>
+
+        <div className="inicio-lateral">
+          <section className="panel">
+            <div className="panel-cabecera">
+              <h3>Objetivo del mes</h3>
+              <button className="enlace" onClick={() => onIr("finanzas")}>
+                Finanzas <ArrowRight size={14} />
+              </button>
+            </div>
+            {datos && <ProgresoObjetivo resumen={datos.resumen} objetivo={datos.objetivo} />}
+          </section>
+
+          <section className="panel inicio-panel">
+            <div className="panel-cabecera">
+              <h3>Por cobrar</h3>
+              <button className="enlace" onClick={() => onIr("pacientes")}>
+                Pacientes <ArrowRight size={14} />
+              </button>
+            </div>
+            {datos && datos.deudores.length === 0 ? (
+              <p className="nota">Todos los pacientes están al día.</p>
+            ) : (
+              <ul className="proximos desplazable">
+                {datos?.deudores.map((p) => (
+                  <li key={p.id}>
+                    <button className="proximo" onClick={() => onIr("pacientes")}>
+                      <span className="avatar calido">{iniciales(p.nombre)}</span>
+                      <span className="proximo-texto">
+                        <strong>{p.nombre}</strong>
+                      </span>
+                      <span className="proximo-hora">{pesos(p.saldo_pendiente)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
     </div>
+  );
+}
+
+function FilaTurno({
+  turno: t,
+  ahora,
+  soloHora = false,
+  onClick,
+}: {
+  turno: TurnoConPaciente;
+  ahora: Date;
+  soloHora?: boolean;
+  onClick: () => void;
+}) {
+  const { tono, etiqueta } = tonoTurno(t);
+  const nota = t.notas ? t.notas.split("\n")[0] : "";
+  const detalle = soloHora ? nota || etiqueta : [textoCuando(t.inicio, ahora), nota].filter(Boolean).join(" · ");
+  return (
+    <li>
+      <button className="proximo" onClick={onClick}>
+        <span className="proximo-hora">{horaTexto(t.inicio)}</span>
+        <span className="avatar">{iniciales(t.paciente_nombre)}</span>
+        <span className="proximo-texto">
+          <strong>{t.paciente_nombre}</strong>
+          <span>{detalle}</span>
+        </span>
+        <span className={`punto ${tono}`} title={etiqueta} />
+      </button>
+    </li>
   );
 }
 
@@ -276,32 +365,59 @@ function Indicador({
   );
 }
 
-function ProgresoObjetivo({ neto, objetivo }: { neto: number; objetivo: number | null }) {
-  if (!objetivo) {
-    return (
-      <p className="nota">
-        Todavía no definiste un objetivo para este mes. Podés cargarlo en Finanzas. Por ahora llevás{" "}
-        <strong>{pesos(neto)}</strong> de ganancia neta.
-      </p>
-    );
-  }
-  const pct = Math.max(0, Math.min(100, (neto / objetivo) * 100));
+function ProgresoObjetivo({ resumen, objetivo }: { resumen: ResumenMes; objetivo: number | null }) {
+  const neto = resumen.facturado - resumen.gastos;
+  const metas = calcularMetas(resumen, objetivo);
+  const meta = metas[metas.length - 1];
+  const pct = objetivo ? Math.max(0, Math.min(100, (neto / objetivo) * 100)) : 0;
   return (
     <div className="progreso-objetivo">
-      <div className="cifras">
-        <span>
-          Ganancia neta <strong>{pesos(neto)}</strong>
-        </span>
-        <span>de {pesos(objetivo)}</span>
+      <div className="cifras-mes">
+        <div>
+          <span>Ingresos</span>
+          <strong>{pesos(resumen.facturado)}</strong>
+        </div>
+        <div>
+          <span>Gastos</span>
+          <strong>{pesos(resumen.gastos)}</strong>
+        </div>
+        <div>
+          <span>Ganancia neta</span>
+          <strong className={neto < 0 ? "baja" : ""}>{pesos(neto)}</strong>
+        </div>
       </div>
-      <div className="barra-simple" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-        <div style={{ width: `${pct}%` }} />
-      </div>
-      <p className="nota">
-        {neto >= objetivo ? "¡Objetivo cumplido!" : `Faltan ${pesos(objetivo - neto)} (${Math.round(pct)}% logrado).`}
-      </p>
+      {objetivo ? (
+        <>
+          <div className="cifras">
+            <span>
+              Objetivo <strong>{pesos(objetivo)}</strong>
+            </span>
+            <span>{Math.round(pct)}%</span>
+          </div>
+          <div className="barra-simple" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+            <div style={{ width: `${pct}%` }} />
+          </div>
+        </>
+      ) : (
+        <p className="nota">Todavía no definiste un objetivo para este mes. Podés cargarlo en Finanzas.</p>
+      )}
+      {meta.monto > 0 && (
+        <p className="nota">{textoSesiones(meta.titulo, meta.cumplida, meta.sesionesAdicionales, resumen.sesiones_programadas)}</p>
+      )}
     </div>
   );
+}
+
+/** Cuántas sesiones más hay que agendar para la meta (gastos, o gastos + objetivo). */
+function textoSesiones(titulo: string, cumplida: boolean, adicionales: number | null, programadas: number): string {
+  const que = titulo === "Cubrir los gastos" ? "cubrir los gastos" : "llegar al objetivo";
+  if (cumplida) return titulo === "Cubrir los gastos" ? "Los gastos del mes ya están cubiertos." : "¡Objetivo cumplido!";
+  if (adicionales === null) return "Cargá el valor de sesión de tus pacientes para calcular cuántas sesiones faltan.";
+  if (adicionales === 0) return `Con los turnos que ya tenés agendados alcanzás para ${que}.`;
+  const agendadas = programadas
+    ? `, además de ${programadas === 1 ? "la sesión agendada" : `las ${programadas} sesiones agendadas`}`
+    : "";
+  return `Para ${que} te faltan ${adicionales} ${adicionales === 1 ? "sesión" : "sesiones"} más${agendadas}.`;
 }
 
 function Saludo({ nombre, onNombre }: { nombre: string; onNombre: (nombre: string) => Promise<void> }) {
