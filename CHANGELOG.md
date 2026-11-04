@@ -2,6 +2,12 @@
 
 Cada versión lista lo que cambió, en español y pensado para quien usa la app.
 
+## [0.9.3] - 2026-11-04
+
+### Cambiado
+
+- Inicio aprovecha toda la pantalla: los turnos de hoy, los próximos 14 días agrupados por día, el objetivo del mes con ingresos, gastos, ganancia neta y cuántas sesiones faltan, y los pacientes con saldo por cobrar.
+
 ## [0.9.2] - 2026-11-03
 
 ### Corregido

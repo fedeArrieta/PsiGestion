@@ -71,3 +71,15 @@ export function tramoMesAnterior(hoy: Date): { desde: string; hasta: string } {
   const hasta = new Date(hoy.getFullYear(), hoy.getMonth() - 1, Math.min(hoy.getDate(), ultimoDia) + 1);
   return { desde: aFechaIso(desde), hasta: aFechaIso(hasta) };
 }
+
+/** Agrupa turnos (ya ordenados por inicio) por día AAAA-MM-DD, conservando el orden. */
+export function agruparPorDia<T extends Pick<Turno, "inicio">>(turnos: T[]): { fecha: string; turnos: T[] }[] {
+  const grupos: { fecha: string; turnos: T[] }[] = [];
+  for (const t of turnos) {
+    const fecha = t.inicio.slice(0, 10);
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.fecha === fecha) ultimo.turnos.push(t);
+    else grupos.push({ fecha, turnos: [t] });
+  }
+  return grupos;
+}

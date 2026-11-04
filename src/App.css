@@ -488,10 +488,16 @@ input[type="radio"] {
 .inicio {
   position: relative;
   isolation: isolate;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-width: 1100px;
+  gap: 20px;
+  min-height: 0;
+}
+
+.contenido:has(.inicio) {
+  display: flex;
+  flex-direction: column;
 }
 
 .inicio-hojas {
@@ -564,10 +570,13 @@ input[type="radio"] {
 }
 
 .indicador {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto auto;
+  column-gap: 16px;
+  row-gap: 1px;
+  align-content: center;
+  padding: 16px 20px;
   text-align: left;
   align-items: stretch;
   background: var(--panel);
@@ -587,10 +596,11 @@ button.indicador:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  margin-bottom: 10px;
-  border-radius: 11px;
+  grid-row: 1 / span 3;
+  align-self: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
   background: var(--acento-suave);
   color: var(--acento);
 }
@@ -630,10 +640,112 @@ button.indicador:hover:not(:disabled) {
 }
 
 .inicio-columnas {
+  flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(300px, 0.85fr);
   gap: 16px;
-  align-items: start;
+  min-height: 440px;
+}
+
+.inicio-panel {
+  min-height: 0;
+}
+
+.inicio-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.inicio-lateral > .inicio-panel {
+  flex: 1;
+}
+
+.desplazable {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+
+.inicio-vacio {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--texto-suave);
+  text-align: center;
+}
+
+.inicio-vacio p {
+  margin: 0;
+}
+
+.proximos-dia + .proximos-dia {
+  margin-top: 10px;
+}
+
+.proximos-dia h4 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0;
+  padding: 6px 6px 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--acento);
+  border-bottom: 1px solid var(--borde);
+}
+
+.proximos-dia h4 span {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--texto-suave);
+}
+
+.avatar.calido {
+  background: var(--calido-suave);
+  color: var(--calido);
+}
+
+.cifras-mes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cifras-mes div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radio);
+  background: var(--superficie-suave);
+}
+
+.cifras-mes span {
+  font-size: 0.75rem;
+  color: var(--texto-suave);
+}
+
+.cifras-mes strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cifras-mes strong.baja {
+  color: var(--atencion);
 }
 
 .proximos {
@@ -652,7 +764,7 @@ button.indicador:hover:not(:disabled) {
   justify-content: flex-start;
   gap: 14px;
   width: 100%;
-  padding: 12px 6px;
+  padding: 10px 6px;
   border: none;
   border-radius: var(--radio);
   background: none;
@@ -692,6 +804,7 @@ button.indicador:hover:not(:disabled) {
 .proximo-hora {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .panel-cabecera button.enlace {
@@ -739,12 +852,32 @@ button.indicador:hover:not(:disabled) {
   gap: 8px;
 }
 
+/* Más angosto: siempre tres columnas; la columna de la derecha se achica y los indicadores pasan a 2×2. */
+@media (max-width: 1400px) {
+  .inicio-columnas {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(260px, 0.8fr);
+  }
+  .cifras-mes {
+    grid-template-columns: 1fr;
+  }
+  .cifras-mes div {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 6px 10px;
+  }
+}
+
 @media (max-width: 1100px) {
   .indicadores {
     grid-template-columns: repeat(2, 1fr);
   }
   .inicio-columnas {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(220px, 0.8fr);
+    gap: 12px;
+  }
+  .proximo .avatar {
+    display: none;
   }
 }
 
